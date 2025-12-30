@@ -1,0 +1,42 @@
+{
+  "name": "kodi-script",
+  "version": "0.0.1",
+  "description": "A lightweight, embeddable scripting language for JavaScript/TypeScript applications",
+  "main": "dist/index.js",
+  "module": "dist/index.mjs",
+  "types": "dist/index.d.ts",
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsup src/index.ts --format cjs,esm --dts --clean",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "prepublishOnly": "npm run build"
+  },
+  "keywords": [
+    "scripting",
+    "interpreter",
+    "dsl",
+    "embedded",
+    "script",
+    "language",
+    "parser",
+    "expression"
+  ],
+  "author": "Issa Hamadou Dicko",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/issadicko/kodi-script-ts.git"
+  },
+  "homepage": "https://github.com/issadicko/kodi-script-ts#readme",
+  "bugs": {
+    "url": "https://github.com/issadicko/kodi-script-ts/issues"
+  },
+  "devDependencies": {
+    "tsup": "^8.0.1",
+    "typescript": "^5.3.3",
+    "vitest": "^1.2.0"
+  }
+}
