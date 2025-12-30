@@ -2,7 +2,9 @@
 
 A lightweight, embeddable scripting language for JavaScript/TypeScript applications.
 
-[![npm version](https://img.shields.io/npm/v/kodi-script)](https://www.npmjs.com/package/@issadicko/kodi-script)
+[![npm version](https://img.shields.io/npm/v/@issadicko/kodi-script)](https://www.npmjs.com/package/@issadicko/kodi-script)
+
+📖 **Full Documentation**: [docs-kodiscript.dickode.net](https://docs-kodiscript.dickode.net/)
 
 ## Installation
 
@@ -59,8 +61,62 @@ const result = KodiScript.builder(`
 - **Null-safety**: `user?.name`, `value ?: "default"`
 - **Control flow**: `if/else`, `return`
 - **Native functions**: String, Math, JSON, Crypto, Arrays
-- **Custom functions**: Register your own functions
+- **Extensible**: Register your own native functions
 - **TypeScript support**: Full type definitions included
+
+## 🔌 Extensibility
+
+KodiScript is designed to be **extensible**. You can enrich the language by adding your own native functions, allowing scripts to interact with your system.
+
+### Custom Functions
+
+```typescript
+const result = KodiScript.builder(`
+  let greeting = greet("World")
+  let price = calculatePrice(100, 0.2)
+  print(greeting + " - Total: $" + price)
+`)
+  .registerFunction('greet', (name) => `Hello, ${name}!`)
+  .registerFunction('calculatePrice', (amount, taxRate) => amount * (1 + taxRate))
+  .execute();
+```
+
+### Express.js Integration
+
+```typescript
+import express from 'express';
+import { KodiScript } from '@issadicko/kodi-script';
+
+const app = express();
+
+// Create a script engine with business functions
+function createScriptEngine(context: Record<string, unknown>) {
+  return KodiScript.builder('')
+    .withVariables(context)
+    .registerFunction('fetchUser', async (id) => {
+      // Call your database
+      return { id, name: 'Alice', tier: 'gold' };
+    })
+    .registerFunction('calculateDiscount', (tier, amount) => {
+      const discounts = { gold: 0.2, silver: 0.1, bronze: 0.05 };
+      return amount * (discounts[tier] || 0);
+    })
+    .registerFunction('sendEmail', (to, subject, body) => {
+      // Send email via your service
+      console.log(`Email sent to ${to}`);
+      return true;
+    });
+}
+
+app.post('/api/execute', (req, res) => {
+  const { script, context } = req.body;
+  const engine = createScriptEngine(context);
+  const result = engine.withSource(script).execute();
+  res.json(result);
+});
+```
+
+This allows your users to write powerful scripts while you maintain control over exposed functionality.
 
 ## Native Functions
 
