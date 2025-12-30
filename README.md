@@ -2,7 +2,7 @@
 
 A lightweight, embeddable scripting language for JavaScript/TypeScript applications.
 
-[![npm version](https://img.shields.io/npm/v/kodi-script)](https://www.npmjs.com/package/kodi-script)
+[![npm version](https://img.shields.io/npm/v/kodi-script)](https://www.npmjs.com/package/@issadicko/kodi-script)
 
 ## Installation
 
