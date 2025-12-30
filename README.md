@@ -7,11 +7,11 @@ A lightweight, embeddable scripting language for JavaScript/TypeScript applicati
 ## Installation
 
 ```bash
-npm install kodi-script
+npm install @issadicko/kodi-script
 # or
-yarn add kodi-script
+yarn add @issadicko/kodi-script
 # or
-pnpm add kodi-script
+pnpm add @issadicko/kodi-script
 ```
 
 ## Usage
@@ -19,7 +19,7 @@ pnpm add kodi-script
 ### Simple Execution
 
 ```typescript
-import { KodiScript } from 'kodi-script';
+import { KodiScript } from '@issadicko/kodi-script';
 
 const result = KodiScript.run(`
   let name = "World"
@@ -109,6 +109,14 @@ return "result"
 let arr = [1, 2, 3]
 let obj = { name: "Alice", age: 30 }
 ```
+
+## Other Implementations
+
+| Language | Package |
+|----------|---------|  
+| **Kotlin** | [Maven Central](https://central.sonatype.com/artifact/io.github.issadicko/kodi-script) |
+| **Go** | [pkg.go.dev](https://pkg.go.dev/github.com/issadicko/kodi-script-go) |
+| **Dart** | [pub.dev](https://pub.dev/packages/kodi_script) |
 
 ## License
 
