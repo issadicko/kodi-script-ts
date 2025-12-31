@@ -1,6 +1,7 @@
 export type AstNode =
   | NumberLiteral
   | StringLiteral
+  | StringTemplate
   | BooleanLiteral
   | NullLiteral
   | Identifier
@@ -31,6 +32,11 @@ export interface NumberLiteral {
 export interface StringLiteral {
   type: 'StringLiteral';
   value: string;
+}
+
+export interface StringTemplate {
+  type: 'StringTemplate';
+  parts: AstNode[];
 }
 
 export interface BooleanLiteral {

@@ -138,6 +138,8 @@ export class Lexer {
     this.advance(); // Skip opening quote
 
     let value = '';
+    let isTemplate = false;
+
     while (!this.isAtEnd() && this.current() !== quote) {
       if (this.current() === '\\') {
         this.advance();
@@ -150,10 +152,16 @@ export class Lexer {
             case '\\': value += '\\'; break;
             case '"': value += '"'; break;
             case "'": value += "'"; break;
+            case '$': value += '$'; break;
             default: value += escaped;
           }
           this.advance();
         }
+      } else if (this.current() === '$' && this.peek(1) === '{') {
+        // Mark as template string - keep ${...} in the value for parser to handle
+        isTemplate = true;
+        value += this.current();
+        this.advance();
       } else {
         value += this.current();
         this.advance();
@@ -165,7 +173,9 @@ export class Lexer {
     }
 
     this.advance(); // Skip closing quote
-    return createToken(TokenType.STRING, value, startLine, startColumn);
+    
+    const tokenType = isTemplate ? TokenType.STRING_TEMPLATE : TokenType.STRING;
+    return createToken(tokenType, value, startLine, startColumn);
   }
 
   private readNumber(): Token {
@@ -200,7 +210,7 @@ export class Lexer {
       this.advance();
     }
 
-    const type = KEYWORDS[value] ?? TokenType.IDENTIFIER;
+    const type = Object.prototype.hasOwnProperty.call(KEYWORDS, value) ? KEYWORDS[value] : TokenType.IDENTIFIER;
     return createToken(type, value, startLine, startColumn);
   }
 

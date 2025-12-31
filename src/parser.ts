@@ -137,7 +137,7 @@ export class Parser {
     return { type: 'ExpressionStatement', expression };
   }
 
-  private parseExpression(): AST.AstNode {
+  parseExpression(): AST.AstNode {
     return this.parseElvis();
   }
 
@@ -282,6 +282,10 @@ export class Parser {
       return { type: 'StringLiteral', value: this.advance().value };
     }
 
+    if (this.check(TokenType.STRING_TEMPLATE)) {
+      return this.parseStringTemplate();
+    }
+
     if (this.check(TokenType.TRUE)) {
       this.advance();
       return { type: 'BooleanLiteral', value: true };
@@ -372,6 +376,12 @@ export class Parser {
     const body = this.parseBlockStatement();
 
     return { type: 'FunctionLiteral', parameters, body };
+  }
+
+  private parseStringTemplate(): AST.StringTemplate {
+    // Store the raw template string - interpreter will parse ${} expressions
+    const templateValue = this.advance().value;
+    return { type: 'StringTemplate', parts: [{ type: 'StringLiteral', value: templateValue }] };
   }
 
   private skipSemicolons(): void {
