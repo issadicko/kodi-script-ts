@@ -22,6 +22,7 @@ jobs:
         with:
           repository: issadicko/kodi-compliance-tests
           path: compliance-tests
+        continue-on-error: true
       
       - name: Setup Node.js ${{ matrix.node-version }}
         uses: actions/setup-node@v4
