@@ -141,6 +141,9 @@ This allows your users to write powerful scripts while you maintain control over
 ### Crypto
 `md5`, `sha1`, `sha256`
 
+### Date/Time
+`now`, `date`, `time`, `datetime`, `timestamp`, `formatDate`, `year`, `month`, `day`, `hour`, `minute`, `second`, `dayOfWeek`, `addDays`, `addHours`, `diffDays`
+
 ## Syntax
 
 ```javascript

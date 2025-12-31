@@ -135,6 +135,47 @@ describe('KodiScript', () => {
       `);
       expect(result.output[0]).toContain('Alice');
     });
+
+    it('should handle date functions', () => {
+      const result = KodiScript.run(`
+        let ts = now()
+        print(isNumber(ts))
+        print(length(date()) == 10)
+        print(contains(time(), ":"))
+        print(year() >= 2024)
+        print(month() >= 1)
+        print(day() >= 1)
+      `);
+      expect(result.output).toEqual(['true', 'true', 'true', 'true', 'true', 'true']);
+    });
+
+    it('should handle date parsing and formatting', () => {
+      const result = KodiScript.run(`
+        let ts = timestamp("2024-12-25")
+        let formatted = formatDate(ts, "DD/MM/YYYY")
+        print(formatted)
+        print(year(ts))
+        print(month(ts))
+        print(day(ts))
+      `);
+      expect(result.output[0]).toBe('25/12/2024');
+      expect(result.output[1]).toBe('2024');
+      expect(result.output[2]).toBe('12');
+      expect(result.output[3]).toBe('25');
+    });
+
+    it('should handle date arithmetic', () => {
+      const result = KodiScript.run(`
+        let ts = timestamp("2024-01-01")
+        let nextWeek = addDays(ts, 7)
+        let nextHour = addHours(ts, 24)
+        let diff = diffDays(ts, nextWeek)
+        print(diff)
+        print(day(nextWeek))
+      `);
+      expect(result.output[0]).toBe('7');
+      expect(result.output[1]).toBe('8');
+    });
   });
 
   describe('Variable Injection', () => {
@@ -157,7 +198,7 @@ describe('KodiScript', () => {
       `)
         .registerFunction('customGreet', (name) => `Hello, ${name}!`)
         .execute();
-      
+
       expect(result.output).toContain('Hello, World!');
     });
   });

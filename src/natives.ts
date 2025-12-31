@@ -19,7 +19,7 @@ export function createNatives(): Map<string, NativeFunction> {
 
   // String functions
   natives.set('length', (str) => String(str).length);
-  natives.set('substring', (str, start, end?) => 
+  natives.set('substring', (str, start, end?) =>
     String(str).substring(Number(start), end !== undefined ? Number(end) : undefined));
   natives.set('toUpperCase', (str) => String(str).toUpperCase());
   natives.set('toLowerCase', (str) => String(str).toLowerCase());
@@ -103,7 +103,7 @@ export function createNatives(): Map<string, NativeFunction> {
   natives.set('size', (arr) => Array.isArray(arr) ? arr.length : 0);
   natives.set('first', (arr) => Array.isArray(arr) && arr.length > 0 ? arr[0] : null);
   natives.set('last', (arr) => Array.isArray(arr) && arr.length > 0 ? arr[arr.length - 1] : null);
-  natives.set('slice', (arr, start, end?) => 
+  natives.set('slice', (arr, start, end?) =>
     Array.isArray(arr) ? arr.slice(Number(start), end !== undefined ? Number(end) : undefined) : []);
   natives.set('reverse', (arr) => Array.isArray(arr) ? [...arr].reverse() : []);
   natives.set('sort', (arr, order?) => {
@@ -140,6 +140,89 @@ export function createNatives(): Map<string, NativeFunction> {
   natives.set('md5', (str) => simpleHash(String(str), 'md5'));
   natives.set('sha1', (str) => simpleHash(String(str), 'sha1'));
   natives.set('sha256', (str) => simpleHash(String(str), 'sha256'));
+
+  // Date/Time functions
+  natives.set('now', () => Date.now());
+  natives.set('date', () => new Date().toISOString().split('T')[0]);
+  natives.set('time', () => new Date().toTimeString().split(' ')[0]);
+  natives.set('datetime', () => new Date().toISOString());
+
+  natives.set('timestamp', (dateStr) => {
+    if (dateStr === undefined || dateStr === null) return Date.now();
+    const d = new Date(String(dateStr));
+    return isNaN(d.getTime()) ? null : d.getTime();
+  });
+
+  natives.set('formatDate', (ts, format) => {
+    const d = new Date(Number(ts));
+    if (isNaN(d.getTime())) return null;
+    const fmt = String(format ?? 'YYYY-MM-DD');
+    const pad = (n: number) => n.toString().padStart(2, '0');
+    return fmt
+      .replace('YYYY', d.getFullYear().toString())
+      .replace('MM', pad(d.getMonth() + 1))
+      .replace('DD', pad(d.getDate()))
+      .replace('HH', pad(d.getHours()))
+      .replace('mm', pad(d.getMinutes()))
+      .replace('ss', pad(d.getSeconds()));
+  });
+
+  natives.set('year', (ts) => {
+    const d = ts === undefined ? new Date() : new Date(Number(ts));
+    return isNaN(d.getTime()) ? null : d.getFullYear();
+  });
+
+  natives.set('month', (ts) => {
+    const d = ts === undefined ? new Date() : new Date(Number(ts));
+    return isNaN(d.getTime()) ? null : d.getMonth() + 1;
+  });
+
+  natives.set('day', (ts) => {
+    const d = ts === undefined ? new Date() : new Date(Number(ts));
+    return isNaN(d.getTime()) ? null : d.getDate();
+  });
+
+  natives.set('hour', (ts) => {
+    const d = ts === undefined ? new Date() : new Date(Number(ts));
+    return isNaN(d.getTime()) ? null : d.getHours();
+  });
+
+  natives.set('minute', (ts) => {
+    const d = ts === undefined ? new Date() : new Date(Number(ts));
+    return isNaN(d.getTime()) ? null : d.getMinutes();
+  });
+
+  natives.set('second', (ts) => {
+    const d = ts === undefined ? new Date() : new Date(Number(ts));
+    return isNaN(d.getTime()) ? null : d.getSeconds();
+  });
+
+  natives.set('dayOfWeek', (ts) => {
+    const d = ts === undefined ? new Date() : new Date(Number(ts));
+    return isNaN(d.getTime()) ? null : d.getDay();
+  });
+
+  natives.set('addDays', (ts, days) => {
+    const d = new Date(Number(ts));
+    if (isNaN(d.getTime())) return null;
+    d.setDate(d.getDate() + Number(days));
+    return d.getTime();
+  });
+
+  natives.set('addHours', (ts, hours) => {
+    const d = new Date(Number(ts));
+    if (isNaN(d.getTime())) return null;
+    d.setHours(d.getHours() + Number(hours));
+    return d.getTime();
+  });
+
+  natives.set('diffDays', (ts1, ts2) => {
+    const d1 = new Date(Number(ts1));
+    const d2 = new Date(Number(ts2));
+    if (isNaN(d1.getTime()) || isNaN(d2.getTime())) return null;
+    const diffMs = d2.getTime() - d1.getTime();
+    return Math.floor(diffMs / (1000 * 60 * 60 * 24));
+  });
 
   return natives;
 }
