@@ -1,3 +1,5 @@
+import { createHash } from 'crypto';
+
 export type NativeFunction = (...args: unknown[]) => unknown;
 
 export function createNatives(): Map<string, NativeFunction> {
@@ -161,10 +163,10 @@ export function createNatives(): Map<string, NativeFunction> {
   natives.set('isString', (val) => typeof val === 'string');
   natives.set('isBool', (val) => typeof val === 'boolean');
 
-  // Crypto (simple hash using Web Crypto API or fallback)
-  natives.set('md5', (str) => simpleHash(String(str), 'md5'));
-  natives.set('sha1', (str) => simpleHash(String(str), 'sha1'));
-  natives.set('sha256', (str) => simpleHash(String(str), 'sha256'));
+  // Crypto hash functions
+  natives.set('md5', (str) => createHash('md5').update(String(str)).digest('hex'));
+  natives.set('sha1', (str) => createHash('sha1').update(String(str)).digest('hex'));
+  natives.set('sha256', (str) => createHash('sha256').update(String(str)).digest('hex'));
 
   // Date/Time functions
   natives.set('now', () => Date.now());
@@ -258,15 +260,3 @@ function stringify(val: unknown): string {
   return String(val);
 }
 
-function simpleHash(str: string, algorithm: string): string {
-  // Simple hash implementation for sync usage
-  // For production, consider using crypto.subtle or crypto module
-  let hash = 0;
-  for (let i = 0; i < str.length; i++) {
-    const char = str.charCodeAt(i);
-    hash = ((hash << 5) - hash) + char;
-    hash = hash & hash;
-  }
-  const prefix = algorithm === 'md5' ? 'md5:' : algorithm === 'sha1' ? 'sha1:' : 'sha256:';
-  return prefix + Math.abs(hash).toString(16).padStart(8, '0');
-}
