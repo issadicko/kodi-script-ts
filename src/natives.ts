@@ -31,6 +31,9 @@ export function createNatives(): Map<string, NativeFunction> {
   natives.set('startsWith', (str, prefix) => String(str).startsWith(String(prefix)));
   natives.set('endsWith', (str, suffix) => String(str).endsWith(String(suffix)));
   natives.set('indexOf', (str, substr) => String(str).indexOf(String(substr)));
+  natives.set('padLeft', (str, length, char?) => String(str).padStart(Number(length), char ? String(char) : ' '));
+  natives.set('padRight', (str, length, char?) => String(str).padEnd(Number(length), char ? String(char) : ' '));
+  natives.set('repeat', (str, count) => String(str).repeat(Math.max(0, Math.floor(Number(count)))));
 
   // Math functions
   natives.set('abs', (n) => Math.abs(Number(n)));
@@ -123,6 +126,28 @@ export function createNatives(): Map<string, NativeFunction> {
       return String(aVal).localeCompare(String(bVal));
     });
     return order === 'desc' ? sorted.reverse() : sorted;
+  });
+
+  // Higher-order array functions
+  natives.set('map', (arr, fn) => {
+    if (!Array.isArray(arr) || typeof fn !== 'function') return [];
+    return arr.map((item, index) => (fn as Function)(item, index));
+  });
+  natives.set('filter', (arr, fn) => {
+    if (!Array.isArray(arr) || typeof fn !== 'function') return [];
+    return arr.filter((item, index) => (fn as Function)(item, index));
+  });
+  natives.set('reduce', (arr, fn, initial) => {
+    if (!Array.isArray(arr) || typeof fn !== 'function') return initial ?? null;
+    return arr.reduce((acc, item, index) => (fn as Function)(acc, item, index), initial ?? 0);
+  });
+  natives.set('find', (arr, fn) => {
+    if (!Array.isArray(arr) || typeof fn !== 'function') return null;
+    return arr.find((item, index) => (fn as Function)(item, index)) ?? null;
+  });
+  natives.set('findIndex', (arr, fn) => {
+    if (!Array.isArray(arr) || typeof fn !== 'function') return -1;
+    return arr.findIndex((item, index) => (fn as Function)(item, index));
   });
 
   // Type checking

@@ -13,8 +13,11 @@ export type AstNode =
   | ArrayLiteral
   | ObjectLiteral
   | IndexExpr
+  | FunctionLiteral
   | LetStatement
+  | AssignmentStatement
   | IfStatement
+  | ForStatement
   | ReturnStatement
   | BlockStatement
   | ExpressionStatement
@@ -97,8 +100,20 @@ export interface IndexExpr {
   index: AstNode;
 }
 
+export interface FunctionLiteral {
+  type: 'FunctionLiteral';
+  parameters: Identifier[];
+  body: BlockStatement;
+}
+
 export interface LetStatement {
   type: 'LetStatement';
+  name: string;
+  value: AstNode;
+}
+
+export interface AssignmentStatement {
+  type: 'AssignmentStatement';
   name: string;
   value: AstNode;
 }
@@ -108,6 +123,13 @@ export interface IfStatement {
   condition: AstNode;
   thenBranch: AstNode;
   elseBranch: AstNode | null;
+}
+
+export interface ForStatement {
+  type: 'ForStatement';
+  variable: Identifier;
+  iterable: AstNode;
+  body: BlockStatement;
 }
 
 export interface ReturnStatement {

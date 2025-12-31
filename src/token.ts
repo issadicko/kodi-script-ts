@@ -13,7 +13,7 @@ export enum TokenType {
   STAR = 'STAR',
   SLASH = 'SLASH',
   PERCENT = 'PERCENT',
-  
+
   // Comparison
   EQ = 'EQ',
   NEQ = 'NEQ',
@@ -21,15 +21,15 @@ export enum TokenType {
   LTE = 'LTE',
   GT = 'GT',
   GTE = 'GTE',
-  
+
   // Logical
   AND = 'AND',
   OR = 'OR',
   NOT = 'NOT',
-  
+
   // Assignment
   ASSIGN = 'ASSIGN',
-  
+
   // Delimiters
   LPAREN = 'LPAREN',
   RPAREN = 'RPAREN',
@@ -41,17 +41,20 @@ export enum TokenType {
   DOT = 'DOT',
   COLON = 'COLON',
   SEMICOLON = 'SEMICOLON',
-  
+
   // Null-safety
   QUESTION_DOT = 'QUESTION_DOT',
   ELVIS = 'ELVIS',
-  
+
   // Keywords
   LET = 'LET',
   IF = 'IF',
   ELSE = 'ELSE',
   RETURN = 'RETURN',
-  
+  FN = 'FN',
+  FOR = 'FOR',
+  IN = 'IN',
+
   // Special
   EOF = 'EOF',
 }

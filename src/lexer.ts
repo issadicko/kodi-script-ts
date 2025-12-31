@@ -11,6 +11,9 @@ const KEYWORDS: Record<string, TokenType> = {
   'and': TokenType.AND,
   'or': TokenType.OR,
   'not': TokenType.NOT,
+  'fn': TokenType.FN,
+  'for': TokenType.FOR,
+  'in': TokenType.IN,
 };
 
 export class Lexer {
@@ -79,43 +82,43 @@ export class Lexer {
       case '.': return createToken(TokenType.DOT, '.', startLine, startColumn);
       case ':': return createToken(TokenType.COLON, ':', startLine, startColumn);
       case ';': return createToken(TokenType.SEMICOLON, ';', startLine, startColumn);
-      
+
       case '=':
         if (this.match('=')) {
           return createToken(TokenType.EQ, '==', startLine, startColumn);
         }
         return createToken(TokenType.ASSIGN, '=', startLine, startColumn);
-      
+
       case '!':
         if (this.match('=')) {
           return createToken(TokenType.NEQ, '!=', startLine, startColumn);
         }
         return createToken(TokenType.NOT, '!', startLine, startColumn);
-      
+
       case '<':
         if (this.match('=')) {
           return createToken(TokenType.LTE, '<=', startLine, startColumn);
         }
         return createToken(TokenType.LT, '<', startLine, startColumn);
-      
+
       case '>':
         if (this.match('=')) {
           return createToken(TokenType.GTE, '>=', startLine, startColumn);
         }
         return createToken(TokenType.GT, '>', startLine, startColumn);
-      
+
       case '&':
         if (this.match('&')) {
           return createToken(TokenType.AND, '&&', startLine, startColumn);
         }
         break;
-      
+
       case '|':
         if (this.match('|')) {
           return createToken(TokenType.OR, '||', startLine, startColumn);
         }
         break;
-      
+
       case '?':
         if (this.match('.')) {
           return createToken(TokenType.QUESTION_DOT, '?.', startLine, startColumn);
@@ -133,7 +136,7 @@ export class Lexer {
     const startLine = this.line;
     const startColumn = this.column;
     this.advance(); // Skip opening quote
-    
+
     let value = '';
     while (!this.isAtEnd() && this.current() !== quote) {
       if (this.current() === '\\') {
@@ -156,11 +159,11 @@ export class Lexer {
         this.advance();
       }
     }
-    
+
     if (this.isAtEnd()) {
       throw new Error(`Unterminated string at line ${startLine}, column ${startColumn}`);
     }
-    
+
     this.advance(); // Skip closing quote
     return createToken(TokenType.STRING, value, startLine, startColumn);
   }
@@ -169,12 +172,12 @@ export class Lexer {
     const startLine = this.line;
     const startColumn = this.column;
     let value = '';
-    
+
     while (!this.isAtEnd() && this.isDigit(this.current())) {
       value += this.current();
       this.advance();
     }
-    
+
     if (!this.isAtEnd() && this.current() === '.' && this.isDigit(this.peek(1))) {
       value += this.current();
       this.advance();
@@ -183,7 +186,7 @@ export class Lexer {
         this.advance();
       }
     }
-    
+
     return createToken(TokenType.NUMBER, value, startLine, startColumn);
   }
 
@@ -191,12 +194,12 @@ export class Lexer {
     const startLine = this.line;
     const startColumn = this.column;
     let value = '';
-    
+
     while (!this.isAtEnd() && this.isAlphaNumeric(this.current())) {
       value += this.current();
       this.advance();
     }
-    
+
     const type = KEYWORDS[value] ?? TokenType.IDENTIFIER;
     return createToken(type, value, startLine, startColumn);
   }
@@ -204,7 +207,7 @@ export class Lexer {
   private skipWhitespaceAndComments(): void {
     while (!this.isAtEnd()) {
       const char = this.current();
-      
+
       if (char === ' ' || char === '\t' || char === '\r') {
         this.advance();
       } else if (char === '\n') {

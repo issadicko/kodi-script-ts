@@ -12,6 +12,7 @@ export class KodiScriptBuilder {
   private source: string;
   private variables: Record<string, unknown> = {};
   private functions: Map<string, NativeFunction> = new Map();
+  private _silentPrint = false;
 
   constructor(source: string) {
     this.source = source;
@@ -32,17 +33,22 @@ export class KodiScriptBuilder {
     return this;
   }
 
+  silentPrint(silent = true): KodiScriptBuilder {
+    this._silentPrint = silent;
+    return this;
+  }
+
   execute(): ScriptResult {
     const lexer = new Lexer(this.source);
     const tokens = lexer.tokenize();
-    
+
     const parser = new Parser(tokens);
     const ast = parser.parse();
-    
-    const interpreter = new Interpreter();
+
+    const interpreter = new Interpreter({ silentPrint: this._silentPrint });
     interpreter.setVariables(this.variables);
     this.functions.forEach((fn, name) => interpreter.registerFunction(name, fn));
-    
+
     return interpreter.run(ast);
   }
 }

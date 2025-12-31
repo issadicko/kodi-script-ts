@@ -5,12 +5,26 @@ export class ReturnValue {
   constructor(public value: unknown) { }
 }
 
+export class FunctionValue {
+  constructor(
+    public parameters: AST.Identifier[],
+    public body: AST.BlockStatement,
+    public closure: Map<string, unknown>
+  ) { }
+}
+
+export interface InterpreterOptions {
+  silentPrint?: boolean;
+}
+
 export class Interpreter {
   private variables: Map<string, unknown> = new Map();
   private functions: Map<string, NativeFunction> = new Map();
   private output: string[] = [];
+  private silentPrint: boolean;
 
-  constructor() {
+  constructor(options: InterpreterOptions = {}) {
+    this.silentPrint = options.silentPrint ?? false;
     // Load native functions
     const natives = createNatives();
     natives.forEach((fn, name) => this.functions.set(name, fn));
@@ -81,10 +95,16 @@ export class Interpreter {
         return this.evaluateObjectLiteral(node);
       case 'IndexExpr':
         return this.evaluateIndexExpr(node);
+      case 'FunctionLiteral':
+        return this.createFunctionValue(node);
       case 'LetStatement':
         return this.evaluateLetStatement(node);
+      case 'AssignmentStatement':
+        return this.evaluateAssignmentStatement(node);
       case 'IfStatement':
         return this.evaluateIfStatement(node);
+      case 'ForStatement':
+        return this.evaluateForStatement(node);
       case 'ReturnStatement':
         throw new ReturnValue(node.value ? this.evaluate(node.value) : null);
       case 'BlockStatement':
@@ -94,6 +114,10 @@ export class Interpreter {
       default:
         throw new Error(`Unknown node type: ${(node as AST.AstNode).type}`);
     }
+  }
+
+  private createFunctionValue(node: AST.FunctionLiteral): FunctionValue {
+    return new FunctionValue(node.parameters, node.body, new Map(this.variables));
   }
 
   private evaluateProgram(node: AST.Program): unknown {
@@ -178,6 +202,28 @@ export class Interpreter {
       calleeName = node.callee.name;
     }
 
+    // Special handling for higher-order array functions with FunctionValue callbacks
+    if (calleeName && ['map', 'filter', 'reduce', 'find', 'findIndex'].includes(calleeName)) {
+      const arr = args[0];
+      const callback = args[1];
+
+      if (Array.isArray(arr) && callback instanceof FunctionValue) {
+        switch (calleeName) {
+          case 'map':
+            return arr.map((item, index) => this.applyFunction(callback, [item, index]));
+          case 'filter':
+            return arr.filter((item, index) => this.isTruthy(this.applyFunction(callback, [item, index])));
+          case 'reduce':
+            const initial = args[2] ?? null;
+            return arr.reduce((acc, item, index) => this.applyFunction(callback, [acc, item, index]), initial);
+          case 'find':
+            return arr.find((item, index) => this.isTruthy(this.applyFunction(callback, [item, index]))) ?? null;
+          case 'findIndex':
+            return arr.findIndex((item, index) => this.isTruthy(this.applyFunction(callback, [item, index])));
+        }
+      }
+    }
+
     // Check if it's a registered function
     if (calleeName && this.functions.has(calleeName)) {
       const fn = this.functions.get(calleeName)!;
@@ -185,7 +231,9 @@ export class Interpreter {
       // Special handling for print
       if (calleeName === 'print') {
         const output = String(result);
-        console.log(output);
+        if (!this.silentPrint) {
+          console.log(output);
+        }
         this.output.push(output);
         return null;
       }
@@ -194,11 +242,48 @@ export class Interpreter {
 
     // Try to evaluate as a callable value
     const callee = this.evaluate(node.callee);
+
+    // Handle user-defined FunctionValue
+    if (callee instanceof FunctionValue) {
+      return this.applyFunction(callee, args);
+    }
+
     if (typeof callee === 'function') {
       return (callee as NativeFunction)(...args);
     }
 
     throw new Error(`${calleeName ?? 'value'} is not a function`);
+  }
+
+  private applyFunction(fn: FunctionValue, args: unknown[]): unknown {
+    // Create new scope with closure
+    const previousVars = new Map(this.variables);
+
+    // Copy closure variables
+    fn.closure.forEach((value, key) => {
+      this.variables.set(key, value);
+    });
+
+    // Bind parameters to arguments
+    for (let i = 0; i < fn.parameters.length; i++) {
+      this.variables.set(fn.parameters[i].name, args[i] ?? null);
+    }
+
+    try {
+      let result: unknown = null;
+      for (const stmt of fn.body.statements) {
+        result = this.evaluate(stmt);
+      }
+      return result;
+    } catch (e) {
+      if (e instanceof ReturnValue) {
+        return e.value;
+      }
+      throw e;
+    } finally {
+      // Restore previous scope
+      this.variables = previousVars;
+    }
   }
 
   private evaluateMemberExpr(node: AST.MemberExpr): unknown {
@@ -252,6 +337,15 @@ export class Interpreter {
     return value;
   }
 
+  private evaluateAssignmentStatement(node: AST.AssignmentStatement): unknown {
+    const value = this.evaluate(node.value);
+    if (!this.variables.has(node.name)) {
+      throw new Error(`Variable '${node.name}' not defined`);
+    }
+    this.variables.set(node.name, value);
+    return value;
+  }
+
   private evaluateIfStatement(node: AST.IfStatement): unknown {
     const condition = this.evaluate(node.condition);
 
@@ -261,6 +355,33 @@ export class Interpreter {
       return this.evaluate(node.elseBranch);
     }
     return null;
+  }
+
+  private evaluateForStatement(node: AST.ForStatement): unknown {
+    const iterable = this.evaluate(node.iterable);
+
+    if (!Array.isArray(iterable)) {
+      throw new Error(`for loop expects an array, got ${typeof iterable}`);
+    }
+
+    let result: unknown = null;
+    const previousValue = this.variables.get(node.variable.name);
+
+    try {
+      for (const item of iterable) {
+        this.variables.set(node.variable.name, item);
+        result = this.evaluateBlockStatement(node.body);
+      }
+    } finally {
+      // Restore previous variable value if it existed, or delete if it didn't
+      if (previousValue === undefined) {
+        this.variables.delete(node.variable.name);
+      } else {
+        this.variables.set(node.variable.name, previousValue);
+      }
+    }
+
+    return result;
   }
 
   private evaluateBlockStatement(node: AST.BlockStatement): unknown {

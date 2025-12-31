@@ -97,6 +97,30 @@ describe('KodiScript', () => {
     });
   });
 
+  it('should handle for loops', () => {
+    const result = KodiScript.run(`
+        let sum = 0
+        let numbers = [1, 2, 3, 4, 5]
+        for (n in numbers) {
+          sum = sum + n
+        }
+        print(sum)
+      `);
+    expect(result.output).toContain('15');
+  });
+
+  it('should handle for loop variable scope', () => {
+    const result = KodiScript.run(`
+        let n = 100
+        let numbers = [1, 2]
+        for (n in numbers) {
+          print(n)
+        }
+        print(n)
+      `);
+    expect(result.output).toEqual(['1', '2', '100']);
+  });
+
   describe('Native Functions', () => {
     it('should handle string functions', () => {
       const result = KodiScript.run(`
@@ -186,6 +210,7 @@ describe('KodiScript', () => {
       `, {
         user: { name: 'Bob', age: 25 }
       });
+      console.log(result.result);
       expect(result.output).toEqual(['Bob', '25']);
     });
   });
@@ -220,6 +245,94 @@ describe('KodiScript', () => {
         print(obj.age)
       `);
       expect(result.output).toEqual(['Alice', '30']);
+    });
+  });
+
+  describe('Higher-Order Array Functions', () => {
+    it('should handle map function with inline fn', () => {
+      const result = KodiScript.run(`
+        let arr = [1, 2, 3]
+        let doubled = map(arr, fn(x) { x * 2 })
+        print(doubled[0])
+        print(doubled[1])
+        print(doubled[2])
+      `);
+      expect(result.output).toEqual(['2', '4', '6']);
+    });
+
+    it('should handle filter function with inline fn', () => {
+      const result = KodiScript.run(`
+        let arr = [1, 2, 3, 4, 5, 6]
+        let big = filter(arr, fn(x) { x > 3 })
+        print(size(big))
+        print(big[0])
+        print(big[1])
+      `);
+      expect(result.output).toEqual(['3', '4', '5']);
+    });
+
+    it('should handle reduce function with inline fn', () => {
+      const result = KodiScript.run(`
+        let arr = [1, 2, 3, 4]
+        let sum = reduce(arr, fn(acc, x) { acc + x }, 0)
+        print(sum)
+      `);
+      expect(result.output).toEqual(['10']);
+    });
+
+    it('should handle find function with inline fn', () => {
+      const result = KodiScript.run(`
+        let users = [{ name: "Alice", age: 25 }, { name: "Bob", age: 30 }]
+        let bob = find(users, fn(u) { u.name == "Bob" })
+        print(bob.age)
+      `);
+      expect(result.output).toEqual(['30']);
+    });
+
+    it('should handle findIndex function with inline fn', () => {
+      const result = KodiScript.run(`
+        let arr = [10, 20, 30, 40]
+        let idx = findIndex(arr, fn(x) { x > 25 })
+        print(idx)
+      `);
+      expect(result.output).toEqual(['2']);
+    });
+  });
+
+  describe('String Utility Functions', () => {
+    it('should handle padLeft function', () => {
+      const result = KodiScript.run(`
+        print(padLeft("5", 3, "0"))
+        print(padLeft("abc", 6))
+      `);
+      expect(result.output).toEqual(['005', '   abc']);
+    });
+
+    it('should handle padRight function', () => {
+      const result = KodiScript.run(`
+        print(padRight("hi", 5, "!"))
+        print(padRight("x", 4))
+      `);
+      expect(result.output).toEqual(['hi!!!', 'x   ']);
+    });
+
+    it('should handle repeat function', () => {
+      const result = KodiScript.run(`
+        print(repeat("ab", 3))
+        print(repeat("x", 5))
+      `);
+      expect(result.output).toEqual(['ababab', 'xxxxx']);
+    });
+  });
+
+  describe('silentPrint Option', () => {
+    it('should capture output but not log to console when silentPrint is true', () => {
+      const result = KodiScript.builder(`
+        print("Hello")
+        print("World")
+      `).silentPrint(true).execute();
+
+      expect(result.output).toEqual(['Hello', 'World']);
     });
   });
 });
