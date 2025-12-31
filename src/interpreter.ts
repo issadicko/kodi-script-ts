@@ -2,7 +2,7 @@ import * as AST from './ast';
 import { createNatives, NativeFunction } from './natives';
 
 export class ReturnValue {
-  constructor(public value: unknown) {}
+  constructor(public value: unknown) { }
 }
 
 export class Interpreter {
@@ -171,7 +171,7 @@ export class Interpreter {
 
   private evaluateCallExpr(node: AST.CallExpr): unknown {
     const args = node.args.map(a => this.evaluate(a));
-    
+
     // Get function name
     let calleeName: string | undefined;
     if (node.callee.type === 'Identifier') {
@@ -184,7 +184,9 @@ export class Interpreter {
       const result = fn(...args);
       // Special handling for print
       if (calleeName === 'print') {
-        this.output.push(String(result));
+        const output = String(result);
+        console.log(output);
+        this.output.push(output);
         return null;
       }
       return result;
