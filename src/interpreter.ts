@@ -1,5 +1,7 @@
 import * as AST from './ast';
 import { createNatives, NativeFunction } from './natives';
+import { Lexer } from './lexer';
+import { Parser } from './parser';
 
 export class ReturnValue {
   constructor(public value: unknown) { }
@@ -71,6 +73,8 @@ export class Interpreter {
         return node.value;
       case 'StringLiteral':
         return node.value;
+      case 'StringTemplate':
+        return this.evaluateStringTemplate(node);
       case 'BooleanLiteral':
         return node.value;
       case 'NullLiteral':
@@ -389,6 +393,47 @@ export class Interpreter {
     for (const stmt of node.statements) {
       result = this.evaluate(stmt);
     }
+    return result;
+  }
+
+  private evaluateStringTemplate(node: AST.StringTemplate): string {
+    // The parser stores the raw template string in parts[0]
+    const rawTemplate = (node.parts[0] as AST.StringLiteral).value;
+    let result = '';
+    let i = 0;
+    
+    while (i < rawTemplate.length) {
+      if (rawTemplate[i] === '$' && rawTemplate[i + 1] === '{') {
+        // Find matching closing brace
+        let braceCount = 1;
+        let j = i + 2;
+        while (j < rawTemplate.length && braceCount > 0) {
+          if (rawTemplate[j] === '{') braceCount++;
+          else if (rawTemplate[j] === '}') braceCount--;
+          j++;
+        }
+        
+        // Extract and evaluate the expression
+        const exprStr = rawTemplate.slice(i + 2, j - 1);
+        const lexer = new Lexer(exprStr);
+        const tokens = lexer.tokenize();
+        const parser = new Parser(tokens);
+        const expr = parser.parseExpression();
+        const value = this.evaluate(expr);
+        
+        if (value === null || value === undefined) {
+          result += 'null';
+        } else {
+          result += String(value);
+        }
+        
+        i = j;
+      } else {
+        result += rawTemplate[i];
+        i++;
+      }
+    }
+    
     return result;
   }
 

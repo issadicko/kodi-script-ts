@@ -2,6 +2,7 @@ export enum TokenType {
   // Literals
   NUMBER = 'NUMBER',
   STRING = 'STRING',
+  STRING_TEMPLATE = 'STRING_TEMPLATE',
   IDENTIFIER = 'IDENTIFIER',
   TRUE = 'TRUE',
   FALSE = 'FALSE',
