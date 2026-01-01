@@ -2,6 +2,7 @@ import { Lexer } from './lexer';
 import { Parser } from './parser';
 import { Interpreter } from './interpreter';
 import { NativeFunction } from './natives';
+import { defaultCache } from './cache';
 
 export interface ScriptResult {
   output: string[];
@@ -13,6 +14,7 @@ export class KodiScriptBuilder {
   private variables: Record<string, unknown> = {};
   private functions: Map<string, NativeFunction> = new Map();
   private _silentPrint = false;
+  private _useCache = true;
 
   constructor(source: string) {
     this.source = source;
@@ -38,12 +40,26 @@ export class KodiScriptBuilder {
     return this;
   }
 
-  execute(): ScriptResult {
-    const lexer = new Lexer(this.source);
-    const tokens = lexer.tokenize();
+  withCache(enabled = true): KodiScriptBuilder {
+    this._useCache = enabled;
+    return this;
+  }
 
-    const parser = new Parser(tokens);
-    const ast = parser.parse();
+  execute(): ScriptResult {
+    // Try cache first
+    let ast = this._useCache ? defaultCache.get(this.source) : undefined;
+
+    if (!ast) {
+      const lexer = new Lexer(this.source);
+      const tokens = lexer.tokenize();
+      const parser = new Parser(tokens);
+      ast = parser.parse();
+
+      // Store in cache
+      if (this._useCache) {
+        defaultCache.set(this.source, ast);
+      }
+    }
 
     const interpreter = new Interpreter({ silentPrint: this._silentPrint });
     interpreter.setVariables(this.variables);
