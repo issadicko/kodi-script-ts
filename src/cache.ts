@@ -1,10 +1,21 @@
 import * as AST from './ast';
-import * as crypto from 'crypto';
 
 interface CacheEntry {
     key: string;
     source: string; // For collision detection
     program: AST.Program;
+}
+
+/**
+ * Simple hash function that works in both Node.js and browser.
+ * Uses djb2 algorithm for fast, consistent hashing.
+ */
+function simpleHash(str: string): string {
+    let hash = 5381;
+    for (let i = 0; i < str.length; i++) {
+        hash = ((hash << 5) + hash) ^ str.charCodeAt(i);
+    }
+    return (hash >>> 0).toString(16).padStart(8, '0');
 }
 
 /**
@@ -21,10 +32,10 @@ export class ASTCache {
     }
 
     /**
-     * Generate SHA-256 hash for source code (first 16 chars).
+     * Generate hash for source code.
      */
     private hash(source: string): string {
-        return crypto.createHash('sha256').update(source).digest('hex').substring(0, 16);
+        return simpleHash(source);
     }
 
     /**
