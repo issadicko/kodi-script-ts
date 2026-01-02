@@ -19,6 +19,7 @@ export type AstNode =
   | AssignmentStatement
   | IfStatement
   | ForStatement
+  | WhileStatement
   | ReturnStatement
   | BlockStatement
   | ExpressionStatement
@@ -135,6 +136,12 @@ export interface ForStatement {
   type: 'ForStatement';
   variable: Identifier;
   iterable: AstNode;
+  body: BlockStatement;
+}
+
+export interface WhileStatement {
+  type: 'WhileStatement';
+  condition: AstNode;
   body: BlockStatement;
 }
 

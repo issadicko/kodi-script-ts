@@ -1,5 +1,5 @@
 import * as AST from './ast';
-import { createNatives, NativeFunction } from './natives';
+import { DEFAULT_NATIVES, NativeFunction } from './natives';
 import { Lexer } from './lexer';
 import { Parser } from './parser';
 
@@ -37,7 +37,7 @@ export interface InterpreterOptions {
 
 export class Interpreter {
   private variables: Map<string, unknown> = new Map();
-  private functions: Map<string, NativeFunction> = new Map();
+  private customFunctions: Map<string, NativeFunction> = new Map(); // Per-instance customs
   private output: string[] = [];
   private silentPrint: boolean;
   private opCount = 0;
@@ -46,9 +46,7 @@ export class Interpreter {
 
   constructor(options: InterpreterOptions = {}) {
     this.silentPrint = options.silentPrint ?? false;
-    // Load native functions
-    const natives = createNatives();
-    natives.forEach((fn, name) => this.functions.set(name, fn));
+    // Use shared DEFAULT_NATIVES (no per-instance creation)
   }
 
   setVariable(name: string, value: unknown): void {
@@ -62,7 +60,7 @@ export class Interpreter {
   }
 
   registerFunction(name: string, fn: NativeFunction): void {
-    this.functions.set(name, fn);
+    this.customFunctions.set(name, fn);
   }
 
   setMaxOperations(maxOps: number): void {
@@ -153,6 +151,8 @@ export class Interpreter {
         return this.evaluateIfStatement(node);
       case 'ForStatement':
         return this.evaluateForStatement(node);
+      case 'WhileStatement':
+        return this.evaluateWhileStatement(node);
       case 'ReturnStatement':
         throw new ReturnValue(node.value ? this.evaluate(node.value) : null);
       case 'BlockStatement':
@@ -180,8 +180,12 @@ export class Interpreter {
     if (this.variables.has(node.name)) {
       return this.variables.get(node.name);
     }
-    if (this.functions.has(node.name)) {
-      return this.functions.get(node.name);
+    // Layered lookup: customs first, then shared builtins
+    if (this.customFunctions.has(node.name)) {
+      return this.customFunctions.get(node.name);
+    }
+    if (DEFAULT_NATIVES.has(node.name)) {
+      return DEFAULT_NATIVES.get(node.name);
     }
     return null;
   }
@@ -272,10 +276,10 @@ export class Interpreter {
       }
     }
 
-    // Check if it's a registered function
-    if (calleeName && this.functions.has(calleeName)) {
-      const fn = this.functions.get(calleeName)!;
-      const result = fn(...args);
+    // Check if it's a registered function (layered: customs first, then builtins)
+    const nativeFn = calleeName ? (this.customFunctions.get(calleeName) ?? DEFAULT_NATIVES.get(calleeName)) : undefined;
+    if (nativeFn) {
+      const result = nativeFn(...args);
       // Special handling for print
       if (calleeName === 'print') {
         const output = String(result);
@@ -448,6 +452,28 @@ export class Interpreter {
       } else {
         this.variables.set(node.variable.name, previousValue);
       }
+    }
+
+    return result;
+  }
+
+  private evaluateWhileStatement(node: AST.WhileStatement): unknown {
+    let result: unknown = null;
+
+    while (true) {
+      // Check limits at each iteration
+      this.checkLimits();
+
+      // Evaluate condition
+      const conditionValue = this.evaluate(node.condition);
+
+      // Exit if condition is falsy
+      if (!this.isTruthy(conditionValue)) {
+        break;
+      }
+
+      // Execute body
+      result = this.evaluateBlockStatement(node.body);
     }
 
     return result;

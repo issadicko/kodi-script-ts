@@ -55,6 +55,7 @@ export enum TokenType {
   FN = 'FN',
   FOR = 'FOR',
   IN = 'IN',
+  WHILE = 'WHILE',
 
   // Special
   EOF = 'EOF',

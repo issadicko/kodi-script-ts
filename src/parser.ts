@@ -44,6 +44,9 @@ export class Parser {
     if (this.check(TokenType.FOR)) {
       return this.parseForStatement();
     }
+    if (this.check(TokenType.WHILE)) {
+      return this.parseWhileStatement();
+    }
     if (this.check(TokenType.LBRACE)) {
       return this.parseBlockStatement();
     }
@@ -116,6 +119,19 @@ export class Parser {
     const body = this.parseBlockStatement();
 
     return { type: 'ForStatement', variable, iterable, body };
+  }
+
+  private parseWhileStatement(): AST.WhileStatement {
+    this.advance(); // consume 'while'
+    this.expect(TokenType.LPAREN, "Expected '(' after 'while'");
+
+    const condition = this.parseExpression();
+
+    this.expect(TokenType.RPAREN, "Expected ')' after condition");
+
+    const body = this.parseBlockStatement();
+
+    return { type: 'WhileStatement', condition, body };
   }
 
   private parseBlockStatement(): AST.BlockStatement {

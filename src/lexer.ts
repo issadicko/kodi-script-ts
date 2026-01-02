@@ -14,6 +14,7 @@ const KEYWORDS: Record<string, TokenType> = {
   'fn': TokenType.FN,
   'for': TokenType.FOR,
   'in': TokenType.IN,
+  'while': TokenType.WHILE,
 };
 
 export class Lexer {
@@ -173,7 +174,7 @@ export class Lexer {
     }
 
     this.advance(); // Skip closing quote
-    
+
     const tokenType = isTemplate ? TokenType.STRING_TEMPLATE : TokenType.STRING;
     return createToken(tokenType, value, startLine, startColumn);
   }

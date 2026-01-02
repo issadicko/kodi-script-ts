@@ -260,3 +260,5 @@ function stringify(val: unknown): string {
   return String(val);
 }
 
+// Shared singleton for built-in functions (memory optimization)
+export const DEFAULT_NATIVES: ReadonlyMap<string, NativeFunction> = createNatives();
