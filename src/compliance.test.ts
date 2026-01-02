@@ -4,6 +4,7 @@ import * as path from 'path';
 import { Lexer } from './lexer';
 import { Parser } from './parser';
 import { Interpreter } from './interpreter';
+import { KodiScript } from './index';
 
 const COMPLIANCE_PATH = process.env.KODI_COMPLIANCE_TESTS_PATH || '../compliance-tests';
 
@@ -40,25 +41,56 @@ describe('Compliance Tests', () => {
         it(`should pass compliance test: ${testName}`, () => {
             const source = fs.readFileSync(sourcePath, 'utf-8');
             const outPath = sourcePath.replace('.kodi', '.out');
-            const expectedOut = fs.readFileSync(outPath, 'utf-8').replace(/\r\n/g, '\n').trim();
+            let expectedOut = '';
+            if (fs.existsSync(outPath)) {
+                expectedOut = fs.readFileSync(outPath, 'utf-8').replace(/\r\n/g, '\n').trim();
+            }
 
-            const lexer = new Lexer(source);
-            const tokens = lexer.tokenize();
-            const parser = new Parser(tokens);
-            const program = parser.parse();
+            // Parse directives
+            let maxOps = 0;
+            let expectError = false;
 
-            const interpreter = new Interpreter({ silentPrint: true });
-            const { output } = interpreter.run(program);
+            const lines = source.split('\n');
+            lines.forEach(line => {
+                const trimmed = line.trim();
+                if (trimmed.startsWith('// config:')) {
+                    const parts = trimmed.substring('// config:'.length).split('=');
+                    if (parts.length >= 2) {
+                        const key = parts[0].trim();
+                        const value = parts[1].trim();
+                        if (key === 'maxOps') {
+                            maxOps = parseInt(value, 10) || 0;
+                        }
+                    }
+                }
+                if (trimmed.startsWith('// expect: error')) {
+                    expectError = true;
+                }
+            });
 
-            const actualOut = output.join('\n').replace(/\r\n/g, '\n').trim();
+            const builder = KodiScript.builder(source);
+            if (maxOps > 0) {
+                builder.withMaxOperations(maxOps);
+            }
+            // Use execute() to get full result
+            const result = builder.execute();
 
-            // Normalize output for cross-implementation compatibility
-            const normalize = (s: string) => s
-                .replace(/(\d+)\.0(?=[\s,\]\}\)\n]|$)/g, '$1')
-                .replace(/<nil>/g, 'null')
-                .replace(/hello\+world/g, 'hello%20world');
+            if (expectError) {
+                expect(result.errors.length).toBeGreaterThan(0);
+            } else {
+                expect(result.errors).toEqual([]);
+                const actualOut = result.output.join('\n').replace(/\r\n/g, '\n').trim();
 
-            expect(normalize(actualOut)).toBe(normalize(expectedOut));
+                // Normalize output for cross-implementation compatibility
+                const normalize = (s: string) => s
+                    .replace(/(\d+)\.0(?=[\s,\]\}\)\n]|$)/g, '$1')
+                    .replace(/<nil>/g, 'null')
+                    .replace(/hello\+world/g, 'hello%20world');
+
+                if (fs.existsSync(outPath)) {
+                    expect(normalize(actualOut)).toBe(normalize(expectedOut));
+                }
+            }
         });
     });
 });
