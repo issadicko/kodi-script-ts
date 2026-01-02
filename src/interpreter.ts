@@ -295,7 +295,28 @@ export class Interpreter {
     if (obj === null || obj === undefined) {
       throw new Error(`Cannot read property '${node.property}' of null`);
     }
-    return (obj as Record<string, unknown>)[node.property] ?? null;
+
+    // First check if it's a plain object (Map-like)
+    if (this.isPlainObject(obj)) {
+      return (obj as Record<string, unknown>)[node.property] ?? null;
+    }
+
+    // Use dynamic property access for bound objects
+    const value = (obj as any)[node.property];
+
+    // If it's a function (method), bind it to the object
+    if (typeof value === 'function') {
+      return (...args: unknown[]) => value.apply(obj, args);
+    }
+
+    return value ?? null;
+  }
+
+  // Helper method to check if object is a plain object (not a class instance)
+  private isPlainObject(obj: unknown): boolean {
+    if (typeof obj !== 'object' || obj === null) return false;
+    const proto = Object.getPrototypeOf(obj);
+    return proto === null || proto === Object.prototype;
   }
 
   private evaluateSafeMemberExpr(node: AST.SafeMemberExpr): unknown {
@@ -401,7 +422,7 @@ export class Interpreter {
     const rawTemplate = (node.parts[0] as AST.StringLiteral).value;
     let result = '';
     let i = 0;
-    
+
     while (i < rawTemplate.length) {
       if (rawTemplate[i] === '$' && rawTemplate[i + 1] === '{') {
         // Find matching closing brace
@@ -412,7 +433,7 @@ export class Interpreter {
           else if (rawTemplate[j] === '}') braceCount--;
           j++;
         }
-        
+
         // Extract and evaluate the expression
         const exprStr = rawTemplate.slice(i + 2, j - 1);
         const lexer = new Lexer(exprStr);
@@ -420,20 +441,20 @@ export class Interpreter {
         const parser = new Parser(tokens);
         const expr = parser.parseExpression();
         const value = this.evaluate(expr);
-        
+
         if (value === null || value === undefined) {
           result += 'null';
         } else {
           result += String(value);
         }
-        
+
         i = j;
       } else {
         result += rawTemplate[i];
         i++;
       }
     }
-    
+
     return result;
   }
 

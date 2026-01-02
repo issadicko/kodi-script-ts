@@ -1,0 +1,281 @@
+# TypeScript Reflective Binding - Detailed Implementation Plan
+
+## Overview
+TypeScript is dynamically typed at runtime (JavaScript), so we can access properties and methods directly without a reflection library. The key is to check if accessed properties are functions and wrap them appropriately.
+
+## Implementation Steps
+
+### 1. Modify Interpreter ([kodi-ts/src/interpreter.ts](file:///Users/issahamadoudicko/IdeaProjects/labo/kodi-script/kodi-ts/src/interpreter.ts))
+
+#### Current Implementation (Line 293-299)
+```typescript
+private evaluateMemberExpr(node: AST.MemberExpr): unknown {
+  const obj = this.evaluate(node.object);
+  if (obj === null || obj === undefined) {
+    throw new Error(`Cannot read property '${node.property}' of null`);
+  }
+  return (obj as Record<string, unknown>)[node.property] ?? null;
+}
+```
+
+#### New Implementation
+```typescript
+private evaluateMemberExpr(node: AST.MemberExpr): unknown {
+  const obj = this.evaluate(node.object);
+  if (obj === null || obj === undefined) {
+    throw new Error(`Cannot read property '${node.property}' of null`);
+  }
+
+  // First check if it's a plain object (Map-like)
+  if (this.isPlainObject(obj)) {
+    return (obj as Record<string, unknown>)[node.property] ?? null;
+  }
+
+  // Use dynamic property access for bound objects
+  const value = (obj as any)[node.property];
+  
+  // If it's a function (method), bind it to the object
+  if (typeof value === 'function') {
+    return (...args: unknown[]) => value.apply(obj, args);
+  }
+  
+  return value ?? null;
+}
+
+// Helper method to check if object is a plain object (not a class instance)
+private isPlainObject(obj: unknown): boolean {
+  if (typeof obj !== 'object' || obj === null) return false;
+  const proto = Object.getPrototypeOf(obj);
+  return proto === null || proto === Object.prototype;
+}
+```
+
+---
+
+### 2. Add Bind Method to API ([kodi-ts/src/index.ts](file:///Users/issahamadoudicko/IdeaProjects/labo/kodi-script/kodi-ts/src/index.ts))
+
+#### Modify KodiScriptBuilder Class (After line 36)
+```typescript
+// Add this method after registerFunction
+bind(name: string, obj: any): KodiScriptBuilder {
+  this.variables[name] = obj;
+  return this;
+}
+```
+
+That's it! TypeScript's dynamic nature makes this very simple.
+
+---
+
+### 3. Create Comprehensive Tests (`kodi-ts/src/__tests__/binding.test.ts`)
+
+```typescript
+import { KodiScript } from '../index';
+
+// Test classes
+class Address {
+  constructor(public city: string, public country: string) {}
+}
+
+class User {
+  constructor(
+    public name: string,
+    public age: number,
+    public address: Address
+  ) {}
+
+  sayHello(): string {
+    return `Hello, I'm ${this.name}`;
+  }
+
+  getAge(): number {
+    return this.age;
+  }
+
+  greet(greeting: string): string {
+    return `${greeting}, ${this.name}!`;
+  }
+
+  getAddress(): Address {
+    return this.address;
+  }
+}
+
+class Calculator {
+  add(a: number, b: number): number {
+    return a + b;
+  }
+
+  multiply(x: number, y: number): number {
+    return x * y;
+  }
+}
+
+describe('Reflective Binding', () => {
+  test('bind field access', () => {
+    const user = new User('Alice', 30, new Address('Paris', 'France'));
+    
+    const result = KodiScript.builder('user.name')
+      .bind('user', user)
+      .execute();
+    
+    expect(result.result).toBe('Alice');
+  });
+
+  test('bind method call', () => {
+    const user = new User('Bob', 25, new Address('London', 'UK'));
+    
+    const result = KodiScript.builder('user.sayHello()')
+      .bind('user', user)
+      .execute();
+    
+    expect(result.result).toBe("Hello, I'm Bob");
+  });
+
+  test('bind method with arguments', () => {
+    const user = new User('Charlie', 28, new Address('Berlin', 'Germany'));
+    
+    const result = KodiScript.builder('user.greet("Hi")')
+      .bind('user', user)
+      .execute();
+    
+    expect(result.result).toBe("Hi, Charlie!");
+  });
+
+  test('bind nested objects', () => {
+    const user = new User('David', 35, new Address('Tokyo', 'Japan'));
+    
+    const result = KodiScript.builder('user.address.city')
+      .bind('user', user)
+      .execute();
+    
+    expect(result.result).toBe('Tokyo');
+  });
+
+  test('bind method chaining', () => {
+    const user = new User('Emily', 32, new Address('Madrid', 'Spain'));
+    
+    const result = KodiScript.builder('user.getAddress().city')
+      .bind('user', user)
+      .execute();
+    
+    expect(result.result).toBe('Madrid');
+  });
+
+  test('bind numeric operations', () => {
+    const calc = new Calculator();
+    
+    const result = KodiScript.builder('calc.add(10, 20)')
+      .bind('calc', calc)
+      .execute();
+    
+    expect(result.result).toBe(30);
+  });
+
+  test('bind multiple objects', () => {
+    const user = new User('Frank', 40, new Address('Rome', 'Italy'));
+    const calc = new Calculator();
+    
+    const script = `
+      let greeting = user.sayHello()
+      let sum = calc.add(5, 3)
+      greeting + " " + sum
+    `;
+    
+    const result = KodiScript.builder(script)
+      .bind('user', user)
+      .bind('calc', calc)
+      .execute();
+    
+    expect(result.result).toBe("Hello, I'm Frank 8");
+  });
+
+  test('bind with variables', () => {
+    const calc = new Calculator();
+    
+    const script = `
+      let x = 10
+      let y = 5
+      calc.add(x, y)
+    `;
+    
+    const result = KodiScript.builder(script)
+      .bind('calc', calc)
+      .execute();
+    
+    expect(result.result).toBe(15);
+  });
+
+  test('bind in loop', () => {
+    const calc = new Calculator();
+    
+    const script = `
+      let numbers = [1, 2, 3, 4, 5]
+      let sum = 0
+      for (n in numbers) {
+        sum = calc.add(sum, n)
+      }
+      sum
+    `;
+    
+    const result = KodiScript.builder(script)
+      .bind('calc', calc)
+      .execute();
+    
+    expect(result.result).toBe(15);
+  });
+});
+```
+
+---
+
+## Testing
+
+Run tests with:
+```bash
+npm test -- binding.test.ts
+```
+
+---
+
+## Key Points
+
+1. **No Reflection Needed**: TypeScript/JavaScript is dynamically typed, so we can access properties directly
+2. **Function Binding**: Must use `.apply()` or `.bind()` to maintain `this` context
+3. **Plain Object Check**: Distinguish between plain objects (maps) and class instances
+4. **Automatic**: Works recursively - returned objects are automatically accessible
+
+---
+
+## Compatibility
+
+- ✅ Node.js
+- ✅ Browser
+- ✅ All TypeScript/JavaScript environments
+
+---
+
+## Example Usage
+
+```typescript
+class MyService {
+  private baseUrl = 'https://api.example.com';
+  
+  fetchData(id: number): string {
+    return `Fetching data for ID: ${id}`;
+  }
+}
+
+const service = new MyService();
+
+const script = `
+  let result = service.fetchData(42)
+  result
+`;
+
+const output = KodiScript.builder(script)
+  .bind('service', service)
+  .execute();
+
+console.log(output.result); // "Fetching data for ID: 42"
+```

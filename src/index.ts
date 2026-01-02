@@ -35,6 +35,11 @@ export class KodiScriptBuilder {
     return this;
   }
 
+  bind(name: string, obj: unknown): KodiScriptBuilder {
+    this.variables[name] = obj;
+    return this;
+  }
+
   silentPrint(silent = true): KodiScriptBuilder {
     this._silentPrint = silent;
     return this;
