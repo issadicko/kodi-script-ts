@@ -3,6 +3,22 @@ import { createNatives, NativeFunction } from './natives';
 import { Lexer } from './lexer';
 import { Parser } from './parser';
 
+
+
+export class LimitsExceededError extends Error {
+  constructor() {
+    super('max operations exceeded');
+    this.name = 'LimitsExceededError';
+  }
+}
+
+export class TimeoutError extends Error {
+  constructor() {
+    super('execution timeout');
+    this.name = 'TimeoutError';
+  }
+}
+
 export class ReturnValue {
   constructor(public value: unknown) { }
 }
@@ -24,6 +40,9 @@ export class Interpreter {
   private functions: Map<string, NativeFunction> = new Map();
   private output: string[] = [];
   private silentPrint: boolean;
+  private opCount = 0;
+  private maxOps = 0; // 0 = unlimited
+  private deadline = 0; // 0 = no timeout
 
   constructor(options: InterpreterOptions = {}) {
     this.silentPrint = options.silentPrint ?? false;
@@ -46,6 +65,30 @@ export class Interpreter {
     this.functions.set(name, fn);
   }
 
+  setMaxOperations(maxOps: number): void {
+    this.maxOps = maxOps;
+    this.opCount = 0;
+  }
+
+  setDeadline(deadline: number): void {
+    this.deadline = deadline;
+  }
+
+  private checkLimits(): void {
+    if (this.maxOps > 0) {
+      this.opCount++;
+      if (this.opCount > this.maxOps) {
+        throw new LimitsExceededError();
+      }
+    }
+
+    if (this.deadline > 0) {
+      if (Date.now() > this.deadline) {
+        throw new TimeoutError();
+      }
+    }
+  }
+
   run(program: AST.Program): { output: string[]; result: unknown } {
     this.output = [];
     let result: unknown = null;
@@ -66,6 +109,7 @@ export class Interpreter {
   }
 
   private evaluate(node: AST.AstNode): unknown {
+    this.checkLimits();
     switch (node.type) {
       case 'Program':
         return this.evaluateProgram(node);

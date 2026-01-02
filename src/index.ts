@@ -6,7 +6,8 @@ import { defaultCache } from './cache';
 
 export interface ScriptResult {
   output: string[];
-  result: unknown;
+  value: unknown;
+  errors: string[];
 }
 
 export class KodiScriptBuilder {
@@ -15,6 +16,8 @@ export class KodiScriptBuilder {
   private functions: Map<string, NativeFunction> = new Map();
   private _silentPrint = false;
   private _useCache = true;
+  private _maxOps = 0;
+  private _timeout = 0;
 
   constructor(source: string) {
     this.source = source;
@@ -50,6 +53,16 @@ export class KodiScriptBuilder {
     return this;
   }
 
+  withMaxOperations(maxOps: number): KodiScriptBuilder {
+    this._maxOps = maxOps;
+    return this;
+  }
+
+  withTimeout(timeoutMs: number): KodiScriptBuilder {
+    this._timeout = timeoutMs;
+    return this;
+  }
+
   execute(): ScriptResult {
     // Try cache first
     let ast = this._useCache ? defaultCache.get(this.source) : undefined;
@@ -68,9 +81,19 @@ export class KodiScriptBuilder {
 
     const interpreter = new Interpreter({ silentPrint: this._silentPrint });
     interpreter.setVariables(this.variables);
+    interpreter.setMaxOperations(this._maxOps);
+    if (this._timeout > 0) {
+      interpreter.setDeadline(Date.now() + this._timeout);
+    }
     this.functions.forEach((fn, name) => interpreter.registerFunction(name, fn));
 
-    return interpreter.run(ast);
+    try {
+      const { output, result } = interpreter.run(ast);
+      return { output, value: result, errors: [] };
+    } catch (e) {
+      const errorMessage = e instanceof Error ? e.message : String(e);
+      return { output: [], value: null, errors: [errorMessage] };
+    }
   }
 }
 

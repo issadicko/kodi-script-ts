@@ -48,7 +48,7 @@ describe('Reflective Binding', () => {
             .bind('user', user)
             .execute();
 
-        expect(result.result).toBe('Alice');
+        expect(result.value).toBe('Alice');
     });
 
     test('bind method call', () => {
@@ -58,7 +58,7 @@ describe('Reflective Binding', () => {
             .bind('user', user)
             .execute();
 
-        expect(result.result).toBe("Hello, I'm Bob");
+        expect(result.value).toBe("Hello, I'm Bob");
     });
 
     test('bind method with arguments', () => {
@@ -68,7 +68,7 @@ describe('Reflective Binding', () => {
             .bind('user', user)
             .execute();
 
-        expect(result.result).toBe("Hi, Charlie!");
+        expect(result.value).toBe("Hi, Charlie!");
     });
 
     test('bind nested objects', () => {
@@ -78,7 +78,7 @@ describe('Reflective Binding', () => {
             .bind('user', user)
             .execute();
 
-        expect(result.result).toBe('Tokyo');
+        expect(result.value).toBe('Tokyo');
     });
 
     test('bind method chaining', () => {
@@ -88,7 +88,7 @@ describe('Reflective Binding', () => {
             .bind('user', user)
             .execute();
 
-        expect(result.result).toBe('Madrid');
+        expect(result.value).toBe('Madrid');
     });
 
     test('bind numeric operations', () => {
@@ -98,7 +98,7 @@ describe('Reflective Binding', () => {
             .bind('calc', calc)
             .execute();
 
-        expect(result.result).toBe(30);
+        expect(result.value).toBe(30);
     });
 
     test('bind multiple objects', () => {
@@ -116,7 +116,7 @@ describe('Reflective Binding', () => {
             .bind('calc', calc)
             .execute();
 
-        expect(result.result).toBe("Hello, I'm Frank 8");
+        expect(result.value).toBe("Hello, I'm Frank 8");
     });
 
     test('bind with variables', () => {
@@ -132,7 +132,7 @@ describe('Reflective Binding', () => {
             .bind('calc', calc)
             .execute();
 
-        expect(result.result).toBe(15);
+        expect(result.value).toBe(15);
     });
 
     test('bind in loop', () => {
@@ -151,6 +151,6 @@ describe('Reflective Binding', () => {
             .bind('calc', calc)
             .execute();
 
-        expect(result.result).toBe(15);
+        expect(result.value).toBe(15);
     });
 });

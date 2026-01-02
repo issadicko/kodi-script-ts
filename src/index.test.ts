@@ -93,7 +93,7 @@ describe('KodiScript', () => {
         }
         return "small"
       `);
-      expect(result.result).toBe('big');
+      expect(result.value).toBe('big');
     });
   });
 
@@ -210,7 +210,7 @@ describe('KodiScript', () => {
       `, {
         user: { name: 'Bob', age: 25 }
       });
-      console.log(result.result);
+
       expect(result.output).toEqual(['Bob', '25']);
     });
   });
