@@ -363,7 +363,15 @@ export class Parser {
 
     if (!this.check(TokenType.RBRACE)) {
       do {
-        const key = this.expect(TokenType.IDENTIFIER, "Expected property name").value;
+        // Accept both identifiers and string literals as keys
+        let key: string;
+        if (this.check(TokenType.IDENTIFIER)) {
+          key = this.advance().value;
+        } else if (this.check(TokenType.STRING)) {
+          key = this.advance().value;
+        } else {
+          throw new Error(`Expected property name at line ${this.current().line}`);
+        }
         this.expect(TokenType.COLON, "Expected ':' after property name");
         const value = this.parseExpression();
         properties.push({ key, value });

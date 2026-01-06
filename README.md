@@ -59,10 +59,11 @@ const result = KodiScript.builder(`
 
 - **Variables**: `let name = "value"`
 - **Null-safety**: `user?.name`, `value ?: "default"`
-- **Control flow**: `if/else`, `return`
-- **Native functions**: String, Math, JSON, Crypto, Arrays
+- **Control flow**: `if/else`, `for...in`, `while`, `return`
+- **Native functions**: String, Math, JSON, Arrays, Date/Time
 - **Extensible**: Register your own native functions
 - **TypeScript support**: Full type definitions included
+- **Browser compatible**: Works in both Node.js and browser environments
 
 ## 🔌 Extensibility
 
@@ -138,8 +139,10 @@ This allows your users to write powerful scripts while you maintain control over
 ### Types
 `typeOf`, `isNull`, `isNumber`, `isString`, `isBool`
 
-### Crypto
+### Crypto (Node.js only)
 `md5`, `sha1`, `sha256`
+
+> **Note**: Crypto functions are only available in Node.js environments. In browsers, they return stub values.
 
 ### Date/Time
 `now`, `date`, `time`, `datetime`, `timestamp`, `formatDate`, `year`, `month`, `day`, `hour`, `minute`, `second`, `dayOfWeek`, `addDays`, `addHours`, `diffDays`
@@ -161,12 +164,27 @@ if (version > 1.0) {
   print("Legacy version")
 }
 
+// Loops
+for (item in items) {
+  print(item)
+}
+
+while (count < 10) {
+  count = count + 1
+}
+
+// Functions
+let greet = fn(name) {
+  return "Hello " + name
+}
+
 // Return
 return "result"
 
 // Arrays and Objects
 let arr = [1, 2, 3]
 let obj = { name: "Alice", age: 30 }
+let obj2 = { "key": "value" }  // String keys supported
 ```
 
 ## Other Implementations

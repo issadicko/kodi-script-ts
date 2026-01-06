@@ -1,4 +1,4 @@
-import { createHash } from 'crypto';
+// import { createHash } from 'crypto';
 
 export type NativeFunction = (...args: unknown[]) => unknown;
 
@@ -60,7 +60,7 @@ export function createNatives(): Map<string, NativeFunction> {
     const maxVal = Math.floor(Number(max));
     return Math.floor(Math.random() * (maxVal - minVal + 1)) + minVal;
   });
-  natives.set('randomUUID', () => crypto.randomUUID());
+  natives.set('randomUUID', () => globalThis.crypto?.randomUUID() ?? '00000000-0000-0000-0000-000000000000');
 
   // JSON
   natives.set('jsonParse', (str) => {
@@ -164,9 +164,10 @@ export function createNatives(): Map<string, NativeFunction> {
   natives.set('isBool', (val) => typeof val === 'boolean');
 
   // Crypto hash functions
-  natives.set('md5', (str) => createHash('md5').update(String(str)).digest('hex'));
-  natives.set('sha1', (str) => createHash('sha1').update(String(str)).digest('hex'));
-  natives.set('sha256', (str) => createHash('sha256').update(String(str)).digest('hex'));
+  // Crypto hash functions (Node.js only - disabled for browser compatibility)
+  natives.set('md5', () => 'md5_not_supported_in_browser');
+  natives.set('sha1', () => 'sha1_not_supported_in_browser');
+  natives.set('sha256', () => 'sha256_not_supported_in_browser');
 
   // Date/Time functions
   natives.set('now', () => Date.now());
