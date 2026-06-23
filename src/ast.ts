@@ -23,6 +23,13 @@ export type AstNode =
   | ReturnStatement
   | BlockStatement
   | ExpressionStatement
+  | TernaryExpr
+  | SpreadExpr
+  | BreakStatement
+  | ContinueStatement
+  | TryStatement
+  | ArrayDestructure
+  | ObjectDestructure
   | Program;
 
 export interface NumberLiteral {
@@ -158,6 +165,45 @@ export interface BlockStatement {
 export interface ExpressionStatement {
   type: 'ExpressionStatement';
   expression: AstNode;
+}
+
+export interface TernaryExpr {
+  type: 'TernaryExpr';
+  condition: AstNode;
+  consequent: AstNode;
+  alternate: AstNode;
+}
+
+export interface SpreadExpr {
+  type: 'SpreadExpr';
+  value: AstNode;
+}
+
+export interface BreakStatement {
+  type: 'BreakStatement';
+}
+
+export interface ContinueStatement {
+  type: 'ContinueStatement';
+}
+
+export interface TryStatement {
+  type: 'TryStatement';
+  body: BlockStatement;
+  catchVar: string | null;
+  handler: BlockStatement;
+}
+
+export interface ArrayDestructure {
+  type: 'ArrayDestructure';
+  names: string[];
+  value: AstNode;
+}
+
+export interface ObjectDestructure {
+  type: 'ObjectDestructure';
+  names: string[];
+  value: AstNode;
 }
 
 export interface Program {

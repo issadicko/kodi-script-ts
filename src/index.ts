@@ -1,13 +1,16 @@
 import { Lexer } from './lexer';
 import { Parser } from './parser';
-import { Interpreter } from './interpreter';
+import { Interpreter, LimitsExceededError, TimeoutError, MaxCallDepthError } from './interpreter';
 import { NativeFunction } from './natives';
 import { defaultCache } from './cache';
+
+export type ErrorKind = 'none' | 'parse' | 'runtime' | 'timeout' | 'max_operations';
 
 export interface ScriptResult {
   output: string[];
   value: unknown;
   errors: string[];
+  errorKind: ErrorKind;
 }
 
 export class KodiScriptBuilder {
@@ -18,6 +21,7 @@ export class KodiScriptBuilder {
   private _useCache = true;
   private _maxOps = 0;
   private _timeout = 0;
+  private _outputSink?: (line: string) => void;
 
   constructor(source: string) {
     this.source = source;
@@ -48,6 +52,12 @@ export class KodiScriptBuilder {
     return this;
   }
 
+  /** Route print() output to a callback instead of console.log. Output is still captured. */
+  withOutput(sink: (line: string) => void): KodiScriptBuilder {
+    this._outputSink = sink;
+    return this;
+  }
+
   withCache(enabled = true): KodiScriptBuilder {
     this._useCache = enabled;
     return this;
@@ -64,22 +74,28 @@ export class KodiScriptBuilder {
   }
 
   execute(): ScriptResult {
-    // Try cache first
+    // Parse (with cache)
     let ast = this._useCache ? defaultCache.get(this.source) : undefined;
 
     if (!ast) {
-      const lexer = new Lexer(this.source);
-      const tokens = lexer.tokenize();
-      const parser = new Parser(tokens);
-      ast = parser.parse();
-
-      // Store in cache
+      try {
+        const lexer = new Lexer(this.source);
+        const tokens = lexer.tokenize();
+        const parser = new Parser(tokens);
+        ast = parser.parse();
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : String(e);
+        return { output: [], value: null, errors: [msg], errorKind: 'parse' };
+      }
       if (this._useCache) {
         defaultCache.set(this.source, ast);
       }
     }
 
-    const interpreter = new Interpreter({ silentPrint: this._silentPrint });
+    const interpreter = new Interpreter({
+      silentPrint: this._silentPrint,
+      outputSink: this._outputSink,
+    });
     interpreter.setVariables(this.variables);
     interpreter.setMaxOperations(this._maxOps);
     if (this._timeout > 0) {
@@ -89,10 +105,19 @@ export class KodiScriptBuilder {
 
     try {
       const { output, result } = interpreter.run(ast);
-      return { output, value: result, errors: [] };
+      return { output, value: result, errors: [], errorKind: 'none' };
     } catch (e) {
-      const errorMessage = e instanceof Error ? e.message : String(e);
-      return { output: [], value: null, errors: [errorMessage] };
+      let errorMessage = e instanceof Error ? e.message : String(e);
+      let errorKind: ErrorKind = 'runtime';
+      if (e instanceof LimitsExceededError) errorKind = 'max_operations';
+      else if (e instanceof TimeoutError) errorKind = 'timeout';
+      else if (e instanceof MaxCallDepthError) errorKind = 'runtime';
+      else if (e instanceof RangeError) {
+        // JS stack overflow from deep recursion -> aligned message.
+        errorMessage = 'maximum call depth exceeded';
+        errorKind = 'runtime';
+      }
+      return { output: [], value: null, errors: [errorMessage], errorKind };
     }
   }
 }
