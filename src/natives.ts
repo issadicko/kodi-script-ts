@@ -28,7 +28,7 @@ export function createNatives(): Map<string, NativeFunction> {
   natives.set('trim', (str) => String(str).trim());
   natives.set('replace', (str, old, newStr) => String(str).replace(String(old), String(newStr)));
   natives.set('split', (str, sep) => String(str).split(String(sep)));
-  natives.set('join', (arr, sep) => Array.isArray(arr) ? arr.join(String(sep)) : '');
+  natives.set('join', (arr, sep) => Array.isArray(arr) ? arr.map(kodiStringify).join(String(sep)) : '');
   natives.set('contains', (str, substr) => String(str).includes(String(substr)));
   natives.set('startsWith', (str, prefix) => String(str).startsWith(String(prefix)));
   natives.set('endsWith', (str, suffix) => String(str).endsWith(String(suffix)));
@@ -152,6 +152,72 @@ export function createNatives(): Map<string, NativeFunction> {
     return arr.findIndex((item, index) => (fn as Function)(item, index));
   });
 
+  // Expanded array functions
+  natives.set('range', (a, b?) => {
+    const start = b === undefined ? 0 : Math.trunc(Number(a));
+    const end = b === undefined ? Math.trunc(Number(a)) : Math.trunc(Number(b));
+    const result: number[] = [];
+    for (let i = start; i < end; i++) result.push(i);
+    return result;
+  });
+  natives.set('sum', (arr) => Array.isArray(arr) ? arr.reduce((acc, x) => acc + Number(x), 0) : 0);
+  natives.set('avg', (arr) => Array.isArray(arr) && arr.length > 0 ? arr.reduce((acc, x) => acc + Number(x), 0) / arr.length : 0);
+  natives.set('unique', (arr) => {
+    if (!Array.isArray(arr)) return [];
+    const seen = new Set<string>();
+    const result: unknown[] = [];
+    for (const v of arr) {
+      const key = typeof v + ':' + kodiStringify(v);
+      if (!seen.has(key)) { seen.add(key); result.push(v); }
+    }
+    return result;
+  });
+  natives.set('flatten', (arr) => {
+    if (!Array.isArray(arr)) return [];
+    const result: unknown[] = [];
+    for (const v of arr) {
+      if (Array.isArray(v)) result.push(...v);
+      else result.push(v);
+    }
+    return result;
+  });
+  natives.set('push', (arr, ...items) => Array.isArray(arr) ? [...arr, ...items] : [...items]);
+  natives.set('concat', (...arrs) => {
+    const result: unknown[] = [];
+    for (const a of arrs) {
+      if (!Array.isArray(a)) throw new Error('concat requires array arguments');
+      result.push(...a);
+    }
+    return result;
+  });
+
+  // Object functions
+  natives.set('keys', (obj) => isPlainObj(obj) ? Object.keys(obj as object).sort() : []);
+  natives.set('values', (obj) => isPlainObj(obj) ? Object.keys(obj as object).sort().map(k => (obj as Record<string, unknown>)[k]) : []);
+  natives.set('entries', (obj) => isPlainObj(obj) ? Object.keys(obj as object).sort().map(k => [k, (obj as Record<string, unknown>)[k]]) : []);
+  natives.set('has', (coll, key) => {
+    if (Array.isArray(coll)) return coll.some(v => kodiStringify(v) === kodiStringify(key) && typeof v === typeof key);
+    if (isPlainObj(coll)) return Object.prototype.hasOwnProperty.call(coll, String(key));
+    return false;
+  });
+
+  // Number parsing
+  natives.set('parseInt', (val) => {
+    const n = typeof val === 'string' ? parseFloat(val.trim()) : Number(val);
+    if (isNaN(n)) throw new Error(`cannot parse '${val}' as integer`);
+    return Math.trunc(n);
+  });
+  natives.set('parseFloat', (val) => {
+    const n = typeof val === 'string' ? parseFloat(val.trim()) : Number(val);
+    if (isNaN(n)) throw new Error(`cannot parse '${val}' as number`);
+    return n;
+  });
+
+  // Regex
+  natives.set('regexMatch', (str, pattern) => new RegExp(String(pattern)).test(String(str)));
+  natives.set('regexReplace', (str, pattern, replacement) =>
+    String(str).replace(new RegExp(String(pattern), 'g'), String(replacement)));
+
   // Type checking
   natives.set('typeOf', (val) => {
     if (val === null) return 'null';
@@ -163,11 +229,10 @@ export function createNatives(): Map<string, NativeFunction> {
   natives.set('isString', (val) => typeof val === 'string');
   natives.set('isBool', (val) => typeof val === 'boolean');
 
-  // Crypto hash functions
-  // Crypto hash functions (Node.js only - disabled for browser compatibility)
-  natives.set('md5', () => 'md5_not_supported_in_browser');
-  natives.set('sha1', () => 'sha1_not_supported_in_browser');
-  natives.set('sha256', () => 'sha256_not_supported_in_browser');
+  // Crypto hash functions (Node.js via crypto; browsers fall back to a stub).
+  natives.set('md5', (str) => nodeHash('md5', String(str)) ?? 'md5_not_supported_in_browser');
+  natives.set('sha1', (str) => nodeHash('sha1', String(str)) ?? 'sha1_not_supported_in_browser');
+  natives.set('sha256', (str) => nodeHash('sha256', String(str)) ?? 'sha256_not_supported_in_browser');
 
   // Date/Time functions
   natives.set('now', () => Date.now());
@@ -255,10 +320,54 @@ export function createNatives(): Map<string, NativeFunction> {
   return natives;
 }
 
-function stringify(val: unknown): string {
+/**
+ * Renders a value in canonical KodiScript form, shared with the interpreter so
+ * output matches the Go and Kotlin implementations:
+ * - integral numbers print without ".0" (JS Number.toString already does this)
+ * - arrays as "[1, 2, 3]"; objects as "{a: 1, b: 2}" with keys sorted
+ * - strings are not quoted (use jsonStringify for quoted output)
+ */
+export function kodiStringify(val: unknown): string {
   if (val === null || val === undefined) return 'null';
-  if (typeof val === 'object') return JSON.stringify(val);
+  if (typeof val === 'boolean') return val ? 'true' : 'false';
+  if (typeof val === 'number') return String(val);
+  if (typeof val === 'string') return val;
+  if (Array.isArray(val)) return '[' + val.map(kodiStringify).join(', ') + ']';
+  if (typeof val === 'object') {
+    const proto = Object.getPrototypeOf(val);
+    if (proto === Object.prototype || proto === null) {
+      const keys = Object.keys(val as object).sort();
+      return '{' + keys.map(k => `${k}: ${kodiStringify((val as Record<string, unknown>)[k])}`).join(', ') + '}';
+    }
+  }
   return String(val);
+}
+
+// Backwards-compatible alias used within this module.
+const stringify = kodiStringify;
+
+function isPlainObj(val: unknown): boolean {
+  if (typeof val !== 'object' || val === null || Array.isArray(val)) return false;
+  const proto = Object.getPrototypeOf(val);
+  return proto === Object.prototype || proto === null;
+}
+
+// Lazily resolves Node's crypto module. Returns null in environments (e.g.
+// browsers) where it is unavailable, so callers can fall back gracefully.
+let nodeCryptoModule: { createHash?: (a: string) => { update: (d: string) => { digest: (e: string) => string } } } | null | undefined;
+function nodeHash(algo: string, data: string): string | null {
+  if (nodeCryptoModule === undefined) {
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-var-requires
+      nodeCryptoModule = typeof require !== 'undefined' ? require('crypto') : null;
+    } catch {
+      nodeCryptoModule = null;
+    }
+  }
+  if (nodeCryptoModule && nodeCryptoModule.createHash) {
+    return nodeCryptoModule.createHash(algo).update(data).digest('hex');
+  }
+  return null;
 }
 
 // Shared singleton for built-in functions (memory optimization)

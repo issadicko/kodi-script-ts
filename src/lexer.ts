@@ -15,6 +15,10 @@ const KEYWORDS: Record<string, TokenType> = {
   'for': TokenType.FOR,
   'in': TokenType.IN,
   'while': TokenType.WHILE,
+  'break': TokenType.BREAK,
+  'continue': TokenType.CONTINUE,
+  'try': TokenType.TRY,
+  'catch': TokenType.CATCH,
 };
 
 export class Lexer {
@@ -50,7 +54,7 @@ export class Lexer {
     const char = this.current();
 
     // String
-    if (char === '"' || char === "'") {
+    if (char === '"' || char === "'" || char === '`') {
       return this.readString(char);
     }
 
@@ -68,10 +72,20 @@ export class Lexer {
     this.advance();
 
     switch (char) {
-      case '+': return createToken(TokenType.PLUS, '+', startLine, startColumn);
-      case '-': return createToken(TokenType.MINUS, '-', startLine, startColumn);
-      case '*': return createToken(TokenType.STAR, '*', startLine, startColumn);
-      case '/': return createToken(TokenType.SLASH, '/', startLine, startColumn);
+      case '+':
+        if (this.match('+')) return createToken(TokenType.PLUS_PLUS, '++', startLine, startColumn);
+        if (this.match('=')) return createToken(TokenType.PLUS_EQ, '+=', startLine, startColumn);
+        return createToken(TokenType.PLUS, '+', startLine, startColumn);
+      case '-':
+        if (this.match('-')) return createToken(TokenType.MINUS_MINUS, '--', startLine, startColumn);
+        if (this.match('=')) return createToken(TokenType.MINUS_EQ, '-=', startLine, startColumn);
+        return createToken(TokenType.MINUS, '-', startLine, startColumn);
+      case '*':
+        if (this.match('=')) return createToken(TokenType.STAR_EQ, '*=', startLine, startColumn);
+        return createToken(TokenType.STAR, '*', startLine, startColumn);
+      case '/':
+        if (this.match('=')) return createToken(TokenType.SLASH_EQ, '/=', startLine, startColumn);
+        return createToken(TokenType.SLASH, '/', startLine, startColumn);
       case '%': return createToken(TokenType.PERCENT, '%', startLine, startColumn);
       case '(': return createToken(TokenType.LPAREN, '(', startLine, startColumn);
       case ')': return createToken(TokenType.RPAREN, ')', startLine, startColumn);
@@ -80,7 +94,13 @@ export class Lexer {
       case '[': return createToken(TokenType.LBRACKET, '[', startLine, startColumn);
       case ']': return createToken(TokenType.RBRACKET, ']', startLine, startColumn);
       case ',': return createToken(TokenType.COMMA, ',', startLine, startColumn);
-      case '.': return createToken(TokenType.DOT, '.', startLine, startColumn);
+      case '.':
+        if (this.current() === '.' && this.peek(1) === '.') {
+          this.advance();
+          this.advance();
+          return createToken(TokenType.ELLIPSIS, '...', startLine, startColumn);
+        }
+        return createToken(TokenType.DOT, '.', startLine, startColumn);
       case ':': return createToken(TokenType.COLON, ':', startLine, startColumn);
       case ';': return createToken(TokenType.SEMICOLON, ';', startLine, startColumn);
 
@@ -127,7 +147,7 @@ export class Lexer {
         if (this.match(':')) {
           return createToken(TokenType.ELVIS, '?:', startLine, startColumn);
         }
-        break;
+        return createToken(TokenType.QUESTION, '?', startLine, startColumn);
     }
 
     throw new Error(`Unexpected character '${char}' at line ${startLine}, column ${startColumn}`);
@@ -153,6 +173,7 @@ export class Lexer {
             case '\\': value += '\\'; break;
             case '"': value += '"'; break;
             case "'": value += "'"; break;
+            case '`': value += '`'; break;
             case '$': value += '$'; break;
             default: value += escaped;
           }
@@ -229,6 +250,18 @@ export class Lexer {
         while (!this.isAtEnd() && this.current() !== '\n') {
           this.advance();
         }
+      } else if (char === '/' && this.peek(1) === '*') {
+        this.advance();
+        this.advance(); // consume '/*'
+        while (!this.isAtEnd() && !(this.current() === '*' && this.peek(1) === '/')) {
+          if (this.current() === '\n') {
+            this.line++;
+            this.column = 0;
+          }
+          this.advance();
+        }
+        this.advance();
+        this.advance(); // consume '*/'
       } else {
         break;
       }

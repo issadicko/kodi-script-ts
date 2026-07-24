@@ -15,6 +15,14 @@ export enum TokenType {
   SLASH = 'SLASH',
   PERCENT = 'PERCENT',
 
+  // Compound assignment and increment/decrement
+  PLUS_EQ = 'PLUS_EQ',
+  MINUS_EQ = 'MINUS_EQ',
+  STAR_EQ = 'STAR_EQ',
+  SLASH_EQ = 'SLASH_EQ',
+  PLUS_PLUS = 'PLUS_PLUS',
+  MINUS_MINUS = 'MINUS_MINUS',
+
   // Comparison
   EQ = 'EQ',
   NEQ = 'NEQ',
@@ -40,12 +48,14 @@ export enum TokenType {
   RBRACKET = 'RBRACKET',
   COMMA = 'COMMA',
   DOT = 'DOT',
+  ELLIPSIS = 'ELLIPSIS',
   COLON = 'COLON',
   SEMICOLON = 'SEMICOLON',
 
-  // Null-safety
+  // Null-safety / conditional
   QUESTION_DOT = 'QUESTION_DOT',
   ELVIS = 'ELVIS',
+  QUESTION = 'QUESTION',
 
   // Keywords
   LET = 'LET',
@@ -56,6 +66,10 @@ export enum TokenType {
   FOR = 'FOR',
   IN = 'IN',
   WHILE = 'WHILE',
+  BREAK = 'BREAK',
+  CONTINUE = 'CONTINUE',
+  TRY = 'TRY',
+  CATCH = 'CATCH',
 
   // Special
   EOF = 'EOF',

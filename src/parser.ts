@@ -24,16 +24,8 @@ export class Parser {
     this.skipSemicolons();
     if (this.isAtEnd()) return null;
 
-    // console.log(`Parsing statement at ${this.current().type} (${this.current().value}), next: ${this.peek(1).type}`);
-
     if (this.check(TokenType.LET)) {
       return this.parseLetStatement();
-    }
-    if (this.check(TokenType.IDENTIFIER)) {
-      // Lookahead for assignment: IDENT = ...
-      if (this.peek(1).type === TokenType.ASSIGN) {
-        return this.parseAssignmentStatement();
-      }
     }
     if (this.check(TokenType.IF)) {
       return this.parseIfStatement();
@@ -47,6 +39,36 @@ export class Parser {
     if (this.check(TokenType.WHILE)) {
       return this.parseWhileStatement();
     }
+    if (this.check(TokenType.TRY)) {
+      return this.parseTryStatement();
+    }
+    if (this.check(TokenType.BREAK)) {
+      this.advance();
+      this.consumeOptionalSemicolon();
+      return { type: 'BreakStatement' };
+    }
+    if (this.check(TokenType.CONTINUE)) {
+      this.advance();
+      this.consumeOptionalSemicolon();
+      return { type: 'ContinueStatement' };
+    }
+    // Named function declaration: fn name(...) { ... }
+    if (this.check(TokenType.FN) && this.peek(1).type === TokenType.IDENTIFIER) {
+      return this.parseFunctionDeclaration();
+    }
+    if (this.check(TokenType.IDENTIFIER)) {
+      const next = this.peek(1).type;
+      if (next === TokenType.ASSIGN) {
+        return this.parseAssignmentStatement();
+      }
+      if (next === TokenType.PLUS_EQ || next === TokenType.MINUS_EQ ||
+        next === TokenType.STAR_EQ || next === TokenType.SLASH_EQ) {
+        return this.parseCompoundAssignment();
+      }
+      if (next === TokenType.PLUS_PLUS || next === TokenType.MINUS_MINUS) {
+        return this.parseIncDec();
+      }
+    }
     if (this.check(TokenType.LBRACE)) {
       return this.parseBlockStatement();
     }
@@ -54,13 +76,85 @@ export class Parser {
     return this.parseExpressionStatement();
   }
 
-  private parseLetStatement(): AST.LetStatement {
+  private parseCompoundAssignment(): AST.AssignmentStatement {
+    const name = this.advance().value; // identifier
+    const opType = this.advance().type; // compound-assign operator
+    const op = opType === TokenType.PLUS_EQ ? '+'
+      : opType === TokenType.MINUS_EQ ? '-'
+        : opType === TokenType.STAR_EQ ? '*' : '/';
+    const right = this.parseExpression();
+    this.consumeOptionalSemicolon();
+    return {
+      type: 'AssignmentStatement',
+      name,
+      value: { type: 'BinaryExpr', operator: op, left: { type: 'Identifier', name }, right },
+    };
+  }
+
+  private parseIncDec(): AST.AssignmentStatement {
+    const name = this.advance().value; // identifier
+    const op = this.advance().type === TokenType.PLUS_PLUS ? '+' : '-';
+    this.consumeOptionalSemicolon();
+    return {
+      type: 'AssignmentStatement',
+      name,
+      value: {
+        type: 'BinaryExpr',
+        operator: op,
+        left: { type: 'Identifier', name },
+        right: { type: 'NumberLiteral', value: 1 },
+      },
+    };
+  }
+
+  private parseTryStatement(): AST.TryStatement {
+    this.advance(); // consume 'try'
+    const body = this.parseBlockStatement();
+    this.expect(TokenType.CATCH, "Expected 'catch' after try block");
+    let catchVar: string | null = null;
+    if (this.match(TokenType.LPAREN)) {
+      catchVar = this.expect(TokenType.IDENTIFIER, "Expected catch variable name").value;
+      this.expect(TokenType.RPAREN, "Expected ')' after catch variable");
+    }
+    const handler = this.parseBlockStatement();
+    return { type: 'TryStatement', body, catchVar, handler };
+  }
+
+  private parseFunctionDeclaration(): AST.LetStatement {
+    this.advance(); // consume 'fn'
+    const name = this.expect(TokenType.IDENTIFIER, "Expected function name").value;
+    const value = this.parseFunctionRest();
+    this.consumeOptionalSemicolon();
+    return { type: 'LetStatement', name, value };
+  }
+
+  private parseLetStatement(): AST.AstNode {
     this.advance(); // consume 'let'
+    // Destructuring: let [a, b] = expr  /  let {a, b} = expr
+    if (this.check(TokenType.LBRACKET)) return this.parseDestructure(TokenType.RBRACKET, true);
+    if (this.check(TokenType.LBRACE)) return this.parseDestructure(TokenType.RBRACE, false);
     const name = this.expect(TokenType.IDENTIFIER, "Expected variable name").value;
     this.expect(TokenType.ASSIGN, "Expected '=' after variable name");
     const value = this.parseExpression();
     this.consumeOptionalSemicolon();
     return { type: 'LetStatement', name, value };
+  }
+
+  private parseDestructure(close: TokenType, isArray: boolean): AST.AstNode {
+    this.advance(); // consume opening [ or {
+    const names: string[] = [];
+    if (!this.check(close)) {
+      do {
+        names.push(this.expect(TokenType.IDENTIFIER, "Expected name in destructuring").value);
+      } while (this.match(TokenType.COMMA));
+    }
+    this.expect(close, "Expected closing bracket in destructuring");
+    this.expect(TokenType.ASSIGN, "Expected '=' in destructuring");
+    const value = this.parseExpression();
+    this.consumeOptionalSemicolon();
+    return isArray
+      ? { type: 'ArrayDestructure', names, value }
+      : { type: 'ObjectDestructure', names, value };
   }
 
   private parseAssignmentStatement(): AST.AssignmentStatement {
@@ -154,7 +248,19 @@ export class Parser {
   }
 
   parseExpression(): AST.AstNode {
-    return this.parseElvis();
+    return this.parseTernary();
+  }
+
+  private parseTernary(): AST.AstNode {
+    const condition = this.parseElvis();
+    if (this.check(TokenType.QUESTION)) {
+      this.advance();
+      const consequent = this.parseExpression();
+      this.expect(TokenType.COLON, "Expected ':' in ternary expression");
+      const alternate = this.parseExpression(); // right-associative
+      return { type: 'TernaryExpr', condition, consequent, alternate };
+    }
+    return condition;
   }
 
   private parseElvis(): AST.AstNode {
@@ -262,7 +368,7 @@ export class Parser {
 
         if (!this.check(TokenType.RPAREN)) {
           do {
-            args.push(this.parseExpression());
+            args.push(this.parseSpreadOrExpression());
           } while (this.match(TokenType.COMMA));
         }
 
@@ -349,12 +455,20 @@ export class Parser {
 
     if (!this.check(TokenType.RBRACKET)) {
       do {
-        elements.push(this.parseExpression());
+        elements.push(this.parseSpreadOrExpression());
       } while (this.match(TokenType.COMMA));
     }
 
     this.expect(TokenType.RBRACKET, "Expected ']' after array elements");
     return { type: 'ArrayLiteral', elements };
+  }
+
+  private parseSpreadOrExpression(): AST.AstNode {
+    if (this.check(TokenType.ELLIPSIS)) {
+      this.advance();
+      return { type: 'SpreadExpr', value: this.parseExpression() };
+    }
+    return this.parseExpression();
   }
 
   private parseObjectLiteral(): AST.ObjectLiteral {
@@ -384,6 +498,11 @@ export class Parser {
 
   private parseFunctionLiteral(): AST.FunctionLiteral {
     this.advance(); // consume 'fn'
+    return this.parseFunctionRest();
+  }
+
+  // Parses `(params) { body }` after the `fn` keyword (and optional name) is consumed.
+  private parseFunctionRest(): AST.FunctionLiteral {
     this.expect(TokenType.LPAREN, "Expected '(' after 'fn'");
 
     const parameters: AST.Identifier[] = [];

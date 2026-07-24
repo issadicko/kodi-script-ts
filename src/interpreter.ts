@@ -1,9 +1,10 @@
 import * as AST from './ast';
-import { DEFAULT_NATIVES, NativeFunction } from './natives';
+import { DEFAULT_NATIVES, NativeFunction, kodiStringify } from './natives';
 import { Lexer } from './lexer';
 import { Parser } from './parser';
 
-
+const MAX_CALL_DEPTH = 1000;
+const NOT_HANDLED = Symbol('not_handled');
 
 export class LimitsExceededError extends Error {
   constructor() {
@@ -19,9 +20,22 @@ export class TimeoutError extends Error {
   }
 }
 
+export class MaxCallDepthError extends Error {
+  constructor() {
+    super('maximum call depth exceeded');
+    this.name = 'MaxCallDepthError';
+  }
+}
+
 export class ReturnValue {
   constructor(public value: unknown) { }
 }
+
+/** Control-flow signal thrown by `break`, caught by the nearest loop. */
+export class BreakSignal { }
+
+/** Control-flow signal thrown by `continue`, caught by the nearest loop. */
+export class ContinueSignal { }
 
 export class FunctionValue {
   constructor(
@@ -33,6 +47,7 @@ export class FunctionValue {
 
 export interface InterpreterOptions {
   silentPrint?: boolean;
+  outputSink?: (line: string) => void;
 }
 
 export class Interpreter {
@@ -40,12 +55,15 @@ export class Interpreter {
   private customFunctions: Map<string, NativeFunction> = new Map(); // Per-instance customs
   private output: string[] = [];
   private silentPrint: boolean;
+  private outputSink?: (line: string) => void;
   private opCount = 0;
   private maxOps = 0; // 0 = unlimited
   private deadline = 0; // 0 = no timeout
+  private callDepth = 0; // recursion guard
 
   constructor(options: InterpreterOptions = {}) {
     this.silentPrint = options.silentPrint ?? false;
+    this.outputSink = options.outputSink;
     // Use shared DEFAULT_NATIVES (no per-instance creation)
   }
 
@@ -98,6 +116,8 @@ export class Interpreter {
     } catch (e) {
       if (e instanceof ReturnValue) {
         result = e.value;
+      } else if (e instanceof BreakSignal || e instanceof ContinueSignal) {
+        // stray break/continue outside a loop: ignore
       } else {
         throw e;
       }
@@ -136,29 +156,45 @@ export class Interpreter {
       case 'ElvisExpr':
         return this.evaluateElvisExpr(node);
       case 'ArrayLiteral':
-        return node.elements.map(e => this.evaluate(e));
+        return this.evaluateElements(node.elements);
       case 'ObjectLiteral':
         return this.evaluateObjectLiteral(node);
       case 'IndexExpr':
         return this.evaluateIndexExpr(node);
       case 'FunctionLiteral':
         return this.createFunctionValue(node);
+      case 'TernaryExpr':
+        return this.isTruthy(this.evaluate(node.condition))
+          ? this.evaluate(node.consequent)
+          : this.evaluate(node.alternate);
       case 'LetStatement':
         return this.evaluateLetStatement(node);
       case 'AssignmentStatement':
         return this.evaluateAssignmentStatement(node);
+      case 'ArrayDestructure':
+        return this.evaluateArrayDestructure(node);
+      case 'ObjectDestructure':
+        return this.evaluateObjectDestructure(node);
       case 'IfStatement':
         return this.evaluateIfStatement(node);
       case 'ForStatement':
         return this.evaluateForStatement(node);
       case 'WhileStatement':
         return this.evaluateWhileStatement(node);
+      case 'TryStatement':
+        return this.evaluateTryStatement(node);
+      case 'BreakStatement':
+        throw new BreakSignal();
+      case 'ContinueStatement':
+        throw new ContinueSignal();
       case 'ReturnStatement':
         throw new ReturnValue(node.value ? this.evaluate(node.value) : null);
       case 'BlockStatement':
         return this.evaluateBlockStatement(node);
       case 'ExpressionStatement':
         return this.evaluate(node.expression);
+      case 'SpreadExpr':
+        throw new Error("spread '...' is only valid inside arrays and call arguments");
       default:
         throw new Error(`Unknown node type: ${(node as AST.AstNode).type}`);
     }
@@ -187,7 +223,8 @@ export class Interpreter {
     if (DEFAULT_NATIVES.has(node.name)) {
       return DEFAULT_NATIVES.get(node.name);
     }
-    return null;
+    // Matches Go/Kotlin: referencing an unbound name is an error (not null).
+    throw new Error(`undefined variable: ${node.name}`);
   }
 
   private evaluateBinaryExpr(node: AST.BinaryExpr): unknown {
@@ -197,17 +234,23 @@ export class Interpreter {
     switch (node.operator) {
       case '+':
         if (typeof left === 'string' || typeof right === 'string') {
-          return String(left ?? '') + String(right ?? '');
+          return kodiStringify(left) + kodiStringify(right);
         }
         return Number(left) + Number(right);
       case '-':
         return Number(left) - Number(right);
       case '*':
         return Number(left) * Number(right);
-      case '/':
-        return Number(left) / Number(right);
-      case '%':
-        return Number(left) % Number(right);
+      case '/': {
+        const r = Number(right);
+        if (r === 0) throw new Error('division by zero');
+        return Number(left) / r;
+      }
+      case '%': {
+        const r = Number(right);
+        if (r === 0) throw new Error('modulo by zero');
+        return Number(left) % r;
+      }
       case '==':
         return left === right;
       case '!=':
@@ -246,77 +289,154 @@ export class Interpreter {
   }
 
   private evaluateCallExpr(node: AST.CallExpr): unknown {
-    const args = node.args.map(a => this.evaluate(a));
-
-    // Get function name
-    let calleeName: string | undefined;
-    if (node.callee.type === 'Identifier') {
-      calleeName = node.callee.name;
+    // Method-call syntax: receiver.method(args)
+    if (node.callee.type === 'MemberExpr') {
+      return this.evaluateMethodCall(node.callee, node.args);
     }
 
-    // Special handling for higher-order array functions with FunctionValue callbacks
-    if (calleeName && ['map', 'filter', 'reduce', 'find', 'findIndex'].includes(calleeName)) {
-      const arr = args[0];
-      const callback = args[1];
+    const args = this.evaluateElements(node.args);
+    const calleeName = node.callee.type === 'Identifier' ? node.callee.name : undefined;
 
-      if (Array.isArray(arr) && callback instanceof FunctionValue) {
-        switch (calleeName) {
-          case 'map':
-            return arr.map((item, index) => this.applyFunction(callback, [item, index]));
-          case 'filter':
-            return arr.filter((item, index) => this.isTruthy(this.applyFunction(callback, [item, index])));
-          case 'reduce':
-            const initial = args[2] ?? null;
-            return arr.reduce((acc, item, index) => this.applyFunction(callback, [acc, item, index]), initial);
-          case 'find':
-            return arr.find((item, index) => this.isTruthy(this.applyFunction(callback, [item, index]))) ?? null;
-          case 'findIndex':
-            return arr.findIndex((item, index) => this.isTruthy(this.applyFunction(callback, [item, index])));
-        }
+    // Builtins that need the interpreter (print + higher-order fns), unless
+    // overridden by a user binding or a registered custom of the same name.
+    if (calleeName && !this.variables.has(calleeName) && !this.customFunctions.has(calleeName)) {
+      const builtin = this.callInterpreterBuiltin(calleeName, args);
+      if (builtin !== NOT_HANDLED) return builtin;
+    }
+
+    // Registry native (customs first, then builtins), unless shadowed by a variable.
+    if (calleeName && !this.variables.has(calleeName)) {
+      const nativeFn = this.customFunctions.get(calleeName) ?? DEFAULT_NATIVES.get(calleeName);
+      if (nativeFn) return nativeFn(...args);
+    }
+
+    // Otherwise evaluate the callee and apply it.
+    const callee = this.evaluate(node.callee);
+    return this.callValue(callee, args, calleeName);
+  }
+
+  // Implements method-call syntax: receiver.method(args).
+  private evaluateMethodCall(member: AST.MemberExpr, argNodes: AST.AstNode[]): unknown {
+    const receiver = this.evaluate(member.object);
+    const method = member.property;
+    const args = this.evaluateElements(argNodes);
+
+    // 1. A callable stored under that key on a plain object wins (obj.fn()).
+    if (this.isPlainObject(receiver)) {
+      const v = (receiver as Record<string, unknown>)[method];
+      if (v instanceof FunctionValue || typeof v === 'function') {
+        return this.invoke(v, args);
       }
     }
 
-    // Check if it's a registered function (layered: customs first, then builtins)
-    const nativeFn = calleeName ? (this.customFunctions.get(calleeName) ?? DEFAULT_NATIVES.get(calleeName)) : undefined;
-    if (nativeFn) {
-      const result = nativeFn(...args);
-      // Special handling for print
-      if (calleeName === 'print') {
-        const output = String(result);
-        if (!this.silentPrint) {
-          console.log(output);
+    // 2. Interpreter builtin invoked as a method: prepend the receiver.
+    const builtin = this.callInterpreterBuiltin(method, [receiver, ...args]);
+    if (builtin !== NOT_HANDLED) return builtin;
+
+    // 3. Registry native invoked as a method: prepend the receiver.
+    const nativeFn = this.customFunctions.get(method) ?? DEFAULT_NATIVES.get(method);
+    if (nativeFn) return nativeFn(receiver, ...args);
+
+    // 4. Bound object: JS method/property via dynamic access.
+    if (receiver === null || receiver === undefined) {
+      throw new Error(`Cannot call method '${method}' on null`);
+    }
+    const value = (receiver as Record<string, unknown>)[method];
+    if (typeof value === 'function') return (value as Function).apply(receiver, args);
+    throw new Error(`undefined method '${method}'`);
+  }
+
+  // Built-in functions that need the interpreter (output capture or calling back
+  // into user functions). Returns NOT_HANDLED if name is not such a builtin.
+  private callInterpreterBuiltin(name: string, args: unknown[]): unknown {
+    switch (name) {
+      case 'print': {
+        for (const arg of args) {
+          const line = kodiStringify(arg);
+          if (this.outputSink) this.outputSink(line);
+          else if (!this.silentPrint) console.log(line);
+          this.output.push(line);
         }
-        this.output.push(output);
         return null;
       }
-      return result;
+      case 'map': {
+        const [arr, fn] = args;
+        return Array.isArray(arr) ? arr.map((item, i) => this.invoke(fn, [item, i])) : [];
+      }
+      case 'filter': {
+        const [arr, fn] = args;
+        return Array.isArray(arr) ? arr.filter((item, i) => this.isTruthy(this.invoke(fn, [item, i]))) : [];
+      }
+      case 'reduce': {
+        const [arr, fn, initial] = args;
+        return Array.isArray(arr) ? arr.reduce((acc, item, i) => this.invoke(fn, [acc, item, i]), initial ?? null) : (initial ?? null);
+      }
+      case 'find': {
+        const [arr, fn] = args;
+        return Array.isArray(arr) ? (arr.find((item, i) => this.isTruthy(this.invoke(fn, [item, i]))) ?? null) : null;
+      }
+      case 'findIndex': {
+        const [arr, fn] = args;
+        return Array.isArray(arr) ? arr.findIndex((item, i) => this.isTruthy(this.invoke(fn, [item, i]))) : -1;
+      }
+      case 'some': {
+        const [arr, fn] = args;
+        return Array.isArray(arr) ? arr.some((item, i) => this.isTruthy(this.invoke(fn, [item, i]))) : false;
+      }
+      case 'every': {
+        const [arr, fn] = args;
+        return Array.isArray(arr) ? arr.every((item, i) => this.isTruthy(this.invoke(fn, [item, i]))) : true;
+      }
+      case 'flatMap': {
+        const [arr, fn] = args;
+        if (!Array.isArray(arr)) return [];
+        const result: unknown[] = [];
+        arr.forEach((item, i) => {
+          const v = this.invoke(fn, [item, i]);
+          if (Array.isArray(v)) result.push(...v);
+          else result.push(v);
+        });
+        return result;
+      }
     }
+    return NOT_HANDLED;
+  }
 
-    // Try to evaluate as a callable value
-    const callee = this.evaluate(node.callee);
+  private invoke(fn: unknown, args: unknown[]): unknown {
+    if (fn instanceof FunctionValue) return this.applyFunction(fn, args);
+    if (typeof fn === 'function') return (fn as Function)(...args);
+    throw new Error('not a function');
+  }
 
-    // Handle user-defined FunctionValue
-    if (callee instanceof FunctionValue) {
-      return this.applyFunction(callee, args);
+  private callValue(callee: unknown, args: unknown[], name?: string): unknown {
+    if (callee instanceof FunctionValue) return this.applyFunction(callee, args);
+    if (typeof callee === 'function') return (callee as NativeFunction)(...args);
+    throw new Error(`${name ?? 'value'} is not a function`);
+  }
+
+  // Evaluates a list of expressions, expanding any ...spread elements.
+  private evaluateElements(nodes: AST.AstNode[]): unknown[] {
+    const result: unknown[] = [];
+    for (const n of nodes) {
+      if (n.type === 'SpreadExpr') {
+        const v = this.evaluate(n.value);
+        if (Array.isArray(v)) result.push(...v);
+        else throw new Error('spread operator requires an array');
+      } else {
+        result.push(this.evaluate(n));
+      }
     }
-
-    if (typeof callee === 'function') {
-      return (callee as NativeFunction)(...args);
-    }
-
-    throw new Error(`${calleeName ?? 'value'} is not a function`);
+    return result;
   }
 
   private applyFunction(fn: FunctionValue, args: unknown[]): unknown {
-    // Create new scope with closure
+    if (this.callDepth >= MAX_CALL_DEPTH) throw new MaxCallDepthError();
+    this.callDepth++;
+
+    // Create new scope: closure variables overlaid on the current scope (so a
+    // top-level named function remains visible to itself for recursion).
     const previousVars = new Map(this.variables);
-
-    // Copy closure variables
-    fn.closure.forEach((value, key) => {
-      this.variables.set(key, value);
-    });
-
-    // Bind parameters to arguments
+    fn.closure.forEach((value, key) => { this.variables.set(key, value); });
     for (let i = 0; i < fn.parameters.length; i++) {
       this.variables.set(fn.parameters[i].name, args[i] ?? null);
     }
@@ -328,14 +448,49 @@ export class Interpreter {
       }
       return result;
     } catch (e) {
-      if (e instanceof ReturnValue) {
-        return e.value;
-      }
+      if (e instanceof ReturnValue) return e.value;
+      // A stray break/continue must not escape the function as a value.
+      if (e instanceof BreakSignal || e instanceof ContinueSignal) return null;
       throw e;
     } finally {
-      // Restore previous scope
       this.variables = previousVars;
+      this.callDepth--;
     }
+  }
+
+  private evaluateTryStatement(node: AST.TryStatement): unknown {
+    try {
+      return this.evaluateBlockStatement(node.body);
+    } catch (e) {
+      // Control-flow and limit signals are not catchable from script.
+      if (e instanceof ReturnValue || e instanceof BreakSignal || e instanceof ContinueSignal ||
+        e instanceof LimitsExceededError || e instanceof TimeoutError || e instanceof MaxCallDepthError) {
+        throw e;
+      }
+      const msg = e instanceof Error ? e.message : String(e);
+      if (node.catchVar) this.variables.set(node.catchVar, msg);
+      return this.evaluateBlockStatement(node.handler);
+    }
+  }
+
+  private evaluateArrayDestructure(node: AST.ArrayDestructure): unknown {
+    const value = this.evaluate(node.value);
+    if (!Array.isArray(value)) {
+      throw new Error('cannot destructure non-array value');
+    }
+    node.names.forEach((name, i) => this.variables.set(name, value[i] ?? null));
+    return value;
+  }
+
+  private evaluateObjectDestructure(node: AST.ObjectDestructure): unknown {
+    const value = this.evaluate(node.value);
+    if (!this.isPlainObject(value)) {
+      throw new Error('cannot destructure non-object value');
+    }
+    for (const name of node.names) {
+      this.variables.set(name, (value as Record<string, unknown>)[name] ?? null);
+    }
+    return value;
   }
 
   private evaluateMemberExpr(node: AST.MemberExpr): unknown {
@@ -443,7 +598,13 @@ export class Interpreter {
     try {
       for (const item of iterable) {
         this.variables.set(node.variable.name, item);
-        result = this.evaluateBlockStatement(node.body);
+        try {
+          result = this.evaluateBlockStatement(node.body);
+        } catch (e) {
+          if (e instanceof BreakSignal) break;
+          if (e instanceof ContinueSignal) continue;
+          throw e;
+        }
       }
     } finally {
       // Restore previous variable value if it existed, or delete if it didn't
@@ -473,7 +634,13 @@ export class Interpreter {
       }
 
       // Execute body
-      result = this.evaluateBlockStatement(node.body);
+      try {
+        result = this.evaluateBlockStatement(node.body);
+      } catch (e) {
+        if (e instanceof BreakSignal) break;
+        if (e instanceof ContinueSignal) continue;
+        throw e;
+      }
     }
 
     return result;
@@ -511,12 +678,7 @@ export class Interpreter {
         const parser = new Parser(tokens);
         const expr = parser.parseExpression();
         const value = this.evaluate(expr);
-
-        if (value === null || value === undefined) {
-          result += 'null';
-        } else {
-          result += String(value);
-        }
+        result += kodiStringify(value);
 
         i = j;
       } else {
@@ -529,10 +691,9 @@ export class Interpreter {
   }
 
   private isTruthy(value: unknown): boolean {
+    // Matches Go/Kotlin: only null and false are falsy (0 and "" are truthy).
     if (value === null || value === undefined) return false;
     if (typeof value === 'boolean') return value;
-    if (typeof value === 'number') return value !== 0;
-    if (typeof value === 'string') return value.length > 0;
     return true;
   }
 }
