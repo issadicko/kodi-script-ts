@@ -70,10 +70,18 @@ export class Parser {
       }
     }
     if (this.check(TokenType.LBRACE)) {
-      return this.parseBlockStatement();
+      // `{` opens a value when a property follows, a block otherwise: a script
+      // whose last statement is an object literal yields that object.
+      return this.looksLikeObjectLiteral() ? this.parseExpressionStatement() : this.parseBlockStatement();
     }
 
     return this.parseExpressionStatement();
+  }
+
+  private looksLikeObjectLiteral(): boolean {
+    const next = this.peek(1).type;
+    if (next === TokenType.RBRACE) return true;
+    return (next === TokenType.IDENTIFIER || next === TokenType.STRING) && this.peek(2).type === TokenType.COLON;
   }
 
   private parseCompoundAssignment(): AST.AssignmentStatement {
@@ -366,10 +374,9 @@ export class Parser {
         this.advance();
         const args: AST.AstNode[] = [];
 
-        if (!this.check(TokenType.RPAREN)) {
-          do {
-            args.push(this.parseSpreadOrExpression());
-          } while (this.match(TokenType.COMMA));
+        while (!this.check(TokenType.RPAREN)) {
+          args.push(this.parseSpreadOrExpression());
+          if (!this.match(TokenType.COMMA)) break;
         }
 
         this.expect(TokenType.RPAREN, "Expected ')' after arguments");
@@ -453,10 +460,10 @@ export class Parser {
     this.advance(); // consume '['
     const elements: AST.AstNode[] = [];
 
-    if (!this.check(TokenType.RBRACKET)) {
-      do {
-        elements.push(this.parseSpreadOrExpression());
-      } while (this.match(TokenType.COMMA));
+    // One element per line and a trailing comma are accepted.
+    while (!this.check(TokenType.RBRACKET)) {
+      elements.push(this.parseSpreadOrExpression());
+      if (!this.match(TokenType.COMMA)) break;
     }
 
     this.expect(TokenType.RBRACKET, "Expected ']' after array elements");
@@ -475,21 +482,21 @@ export class Parser {
     this.advance(); // consume '{'
     const properties: { key: string; value: AST.AstNode }[] = [];
 
-    if (!this.check(TokenType.RBRACE)) {
-      do {
-        // Accept both identifiers and string literals as keys
-        let key: string;
-        if (this.check(TokenType.IDENTIFIER)) {
-          key = this.advance().value;
-        } else if (this.check(TokenType.STRING)) {
-          key = this.advance().value;
-        } else {
-          throw new Error(`Expected property name at line ${this.current().line}`);
-        }
-        this.expect(TokenType.COLON, "Expected ':' after property name");
-        const value = this.parseExpression();
-        properties.push({ key, value });
-      } while (this.match(TokenType.COMMA));
+    // One property per line and a trailing comma are accepted.
+    while (!this.check(TokenType.RBRACE)) {
+      // Accept both identifiers and string literals as keys
+      let key: string;
+      if (this.check(TokenType.IDENTIFIER)) {
+        key = this.advance().value;
+      } else if (this.check(TokenType.STRING)) {
+        key = this.advance().value;
+      } else {
+        throw new Error(`Expected property name at line ${this.current().line}`);
+      }
+      this.expect(TokenType.COLON, "Expected ':' after property name");
+      const value = this.parseExpression();
+      properties.push({ key, value });
+      if (!this.match(TokenType.COMMA)) break;
     }
 
     this.expect(TokenType.RBRACE, "Expected '}' after object properties");
