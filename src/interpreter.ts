@@ -2,6 +2,7 @@ import * as AST from './ast';
 import { DEFAULT_NATIVES, NativeFunction, kodiStringify } from './natives';
 import { Lexer } from './lexer';
 import { Parser } from './parser';
+import { KEYED_BUILTINS, KeyedHost } from './keyed';
 
 const MAX_CALL_DEPTH = 1000;
 const NOT_HANDLED = Symbol('not_handled');
@@ -60,6 +61,11 @@ export class Interpreter {
   private maxOps = 0; // 0 = unlimited
   private deadline = 0; // 0 = no timeout
   private callDepth = 0; // recursion guard
+  private keyedHost: KeyedHost = {
+    isCallable: (v) => v instanceof FunctionValue || typeof v === 'function',
+    call: (fn, args) => this.invoke(fn, args),
+    isTruthy: (v) => this.isTruthy(v),
+  };
 
   constructor(options: InterpreterOptions = {}) {
     this.silentPrint = options.silentPrint ?? false;
@@ -399,6 +405,8 @@ export class Interpreter {
         return result;
       }
     }
+    const keyed = KEYED_BUILTINS.get(name);
+    if (keyed) return keyed(args, this.keyedHost);
     return NOT_HANDLED;
   }
 

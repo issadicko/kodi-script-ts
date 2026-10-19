@@ -1,4 +1,9 @@
 // import { createHash } from 'crypto';
+import { registerDateNatives } from './dates';
+import { registerListNatives } from './lists';
+import { isPlainObj, kodiStringify } from './values';
+
+export { kodiStringify };
 
 export type NativeFunction = (...args: unknown[]) => unknown;
 
@@ -234,123 +239,14 @@ export function createNatives(): Map<string, NativeFunction> {
   natives.set('sha1', (str) => nodeHash('sha1', String(str)) ?? 'sha1_not_supported_in_browser');
   natives.set('sha256', (str) => nodeHash('sha256', String(str)) ?? 'sha256_not_supported_in_browser');
 
-  // Date/Time functions
-  natives.set('now', () => Date.now());
-  natives.set('date', () => new Date().toISOString().split('T')[0]);
-  natives.set('time', () => new Date().toTimeString().split(' ')[0]);
-  natives.set('datetime', () => new Date().toISOString());
-
-  natives.set('timestamp', (dateStr) => {
-    if (dateStr === undefined || dateStr === null) return Date.now();
-    const d = new Date(String(dateStr));
-    return isNaN(d.getTime()) ? null : d.getTime();
-  });
-
-  natives.set('formatDate', (ts, format) => {
-    const d = new Date(Number(ts));
-    if (isNaN(d.getTime())) return null;
-    const fmt = String(format ?? 'YYYY-MM-DD');
-    const pad = (n: number) => n.toString().padStart(2, '0');
-    return fmt
-      .replace('YYYY', d.getFullYear().toString())
-      .replace('MM', pad(d.getMonth() + 1))
-      .replace('DD', pad(d.getDate()))
-      .replace('HH', pad(d.getHours()))
-      .replace('mm', pad(d.getMinutes()))
-      .replace('ss', pad(d.getSeconds()));
-  });
-
-  natives.set('year', (ts) => {
-    const d = ts === undefined ? new Date() : new Date(Number(ts));
-    return isNaN(d.getTime()) ? null : d.getFullYear();
-  });
-
-  natives.set('month', (ts) => {
-    const d = ts === undefined ? new Date() : new Date(Number(ts));
-    return isNaN(d.getTime()) ? null : d.getMonth() + 1;
-  });
-
-  natives.set('day', (ts) => {
-    const d = ts === undefined ? new Date() : new Date(Number(ts));
-    return isNaN(d.getTime()) ? null : d.getDate();
-  });
-
-  natives.set('hour', (ts) => {
-    const d = ts === undefined ? new Date() : new Date(Number(ts));
-    return isNaN(d.getTime()) ? null : d.getHours();
-  });
-
-  natives.set('minute', (ts) => {
-    const d = ts === undefined ? new Date() : new Date(Number(ts));
-    return isNaN(d.getTime()) ? null : d.getMinutes();
-  });
-
-  natives.set('second', (ts) => {
-    const d = ts === undefined ? new Date() : new Date(Number(ts));
-    return isNaN(d.getTime()) ? null : d.getSeconds();
-  });
-
-  natives.set('dayOfWeek', (ts) => {
-    const d = ts === undefined ? new Date() : new Date(Number(ts));
-    return isNaN(d.getTime()) ? null : d.getDay();
-  });
-
-  natives.set('addDays', (ts, days) => {
-    const d = new Date(Number(ts));
-    if (isNaN(d.getTime())) return null;
-    d.setDate(d.getDate() + Number(days));
-    return d.getTime();
-  });
-
-  natives.set('addHours', (ts, hours) => {
-    const d = new Date(Number(ts));
-    if (isNaN(d.getTime())) return null;
-    d.setHours(d.getHours() + Number(hours));
-    return d.getTime();
-  });
-
-  natives.set('diffDays', (ts1, ts2) => {
-    const d1 = new Date(Number(ts1));
-    const d2 = new Date(Number(ts2));
-    if (isNaN(d1.getTime()) || isNaN(d2.getTime())) return null;
-    const diffMs = d2.getTime() - d1.getTime();
-    return Math.floor(diffMs / (1000 * 60 * 60 * 24));
-  });
+  registerDateNatives(natives);
+  registerListNatives(natives);
 
   return natives;
 }
 
-/**
- * Renders a value in canonical KodiScript form, shared with the interpreter so
- * output matches the Go and Kotlin implementations:
- * - integral numbers print without ".0" (JS Number.toString already does this)
- * - arrays as "[1, 2, 3]"; objects as "{a: 1, b: 2}" with keys sorted
- * - strings are not quoted (use jsonStringify for quoted output)
- */
-export function kodiStringify(val: unknown): string {
-  if (val === null || val === undefined) return 'null';
-  if (typeof val === 'boolean') return val ? 'true' : 'false';
-  if (typeof val === 'number') return String(val);
-  if (typeof val === 'string') return val;
-  if (Array.isArray(val)) return '[' + val.map(kodiStringify).join(', ') + ']';
-  if (typeof val === 'object') {
-    const proto = Object.getPrototypeOf(val);
-    if (proto === Object.prototype || proto === null) {
-      const keys = Object.keys(val as object).sort();
-      return '{' + keys.map(k => `${k}: ${kodiStringify((val as Record<string, unknown>)[k])}`).join(', ') + '}';
-    }
-  }
-  return String(val);
-}
-
 // Backwards-compatible alias used within this module.
 const stringify = kodiStringify;
-
-function isPlainObj(val: unknown): boolean {
-  if (typeof val !== 'object' || val === null || Array.isArray(val)) return false;
-  const proto = Object.getPrototypeOf(val);
-  return proto === Object.prototype || proto === null;
-}
 
 // Lazily resolves Node's crypto module. Returns null in environments (e.g.
 // browsers) where it is unavailable, so callers can fall back gracefully.
